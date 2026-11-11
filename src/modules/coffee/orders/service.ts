@@ -1017,11 +1017,22 @@ export async function listBaristaQueue(
   if (actor.role !== 'barista' && actor.role !== 'admin') {
     throw new AppError(403, 'FORBIDDEN', 'Нет доступа');
   }
-  if (!actor.pointId) {
-    throw new AppError(403, 'BARISTA_NO_POINT', 'Вам не назначена точка');
+  let pointId = actor.pointId;
+  let pointName = actor.pointName ?? 'Точка СТАНЦИЯ';
+
+  if (!pointId && actor.role === 'admin') {
+    const firstPt = await query<{ id: number; name: string }>(
+      'SELECT id, name FROM points ORDER BY id ASC LIMIT 1'
+    );
+    if (firstPt.rowCount > 0) {
+      pointId = firstPt.rows[0].id;
+      pointName = firstPt.rows[0].name;
+    }
   }
 
-  const pointId = actor.pointId;
+  if (!pointId) {
+    throw new AppError(403, 'BARISTA_NO_POINT', 'Вам не назначена точка');
+  }
   const { start, end } = getMiassDayBounds(undefined, now);
 
   const activeRes = await query<{
@@ -1099,7 +1110,7 @@ export async function listBaristaQueue(
 
   return {
     pointId,
-    pointName: actor.pointName ?? 'Точка СТАНЦИЯ',
+    pointName,
     activeOrders,
     completedTodayOrders,
     counts,
