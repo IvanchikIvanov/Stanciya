@@ -59,4 +59,5 @@ export interface PlatformModule {
   adminNavItems: AdminNavItem[];
   homeBlock: ModuleHomeBlock;
   getStatsBlock?: (params: StatsFilterParams) => Promise<ModuleStatsBlockData>;
+  attachGuestOrderToUser?: (accessKey: string, userId: number) => Promise<void>;
 }

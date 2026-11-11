@@ -51,6 +51,17 @@ export async function collectModulesStats(
   return blocks;
 }
 
+export async function attachGuestOrderAcrossModules(
+  accessKey: string,
+  userId: number
+): Promise<void> {
+  for (const mod of moduleRegistry.values()) {
+    if (mod.attachGuestOrderToUser) {
+      await mod.attachGuestOrderToUser(accessKey, userId);
+    }
+  }
+}
+
 export const PROMO_SERVICE_BLOCKS: PromoServiceBlock[] = [
   {
     id: 'ev-charge',
