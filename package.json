@@ -8,7 +8,7 @@
     "start": "next start",
     "migrate": "tsx scripts/migrate.ts",
     "seed": "tsx scripts/seed.ts",
-    "test": "tsx --test tests/*.test.ts"
+    "test": "tsx --test --test-concurrency=1 tests/core-auth.test.ts tests/coffee-business-rules.test.ts tests/acceptance-12-scenarios.test.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.2.17",

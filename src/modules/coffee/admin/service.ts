@@ -195,22 +195,18 @@ export async function deleteCategory(categoryId: number): Promise<void> {
     );
   }
 
-  try {
-    const del = await query('DELETE FROM coffee_categories WHERE id = $1', [categoryId]);
+  await transaction(async (tx) => {
+    await tx.query(
+      'DELETE FROM coffee_products WHERE category_id = $1 AND deleted_at IS NOT NULL',
+      [categoryId]
+    );
+    const del = await tx.query('DELETE FROM coffee_categories WHERE id = $1', [
+      categoryId,
+    ]);
     if (del.rowCount === 0) {
       throw new AppError(404, 'CATEGORY_NOT_FOUND', 'Категория не найдена');
     }
-  } catch (err: any) {
-    if (err instanceof AppError) throw err;
-    if (err?.code === '23503') {
-      throw new AppError(
-        409,
-        'CATEGORY_HAS_PRODUCTS',
-        'Удалить категорию с товарами нельзя'
-      );
-    }
-    throw err;
-  }
+  });
 }
 
 export interface UpsertProductInput {
