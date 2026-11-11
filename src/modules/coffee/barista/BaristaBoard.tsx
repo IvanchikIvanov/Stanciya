@@ -226,6 +226,11 @@ export function BaristaBoard({
         </div>
       )}
 
+      {/* Предупреждение на узких экранах (< 768 px) */}
+      <div className="md:hidden bg-amber-100 border-b border-amber-300 text-amber-950 text-xs font-bold px-4 py-2 text-center">
+        Панель бариста рассчитана на планшеты (от 768 px) и компьютеры.
+      </div>
+
       {/* Шапка панели бариста */}
       <header className="bg-brand-deep text-white shadow-md">
         <div className="max-w-7xl mx-auto px-4 py-3.5 flex flex-wrap items-center justify-between gap-4">

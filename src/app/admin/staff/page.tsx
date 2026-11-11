@@ -12,6 +12,7 @@ export default function AdminStaffPage() {
   >([]);
   const [points, setPoints] = useState<PointDto[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'ok' | 'err'; text: string } | null>(
     null
   );
@@ -37,20 +38,20 @@ export default function AdminStaffPage() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
+    setLoadError(false);
     try {
       const [staffRes, ptsRes] = await Promise.all([
         fetch('/api/core/admin/staff', { cache: 'no-store' }),
         fetch('/api/core/admin/points', { cache: 'no-store' }),
       ]);
-      if (staffRes.ok) {
-        const sData = await staffRes.json();
-        setStaff(sData.staff ?? []);
-        setClients(sData.clients ?? []);
-      }
-      if (ptsRes.ok) {
-        const pData = await ptsRes.json();
-        setPoints(pData.points ?? []);
-      }
+      if (!staffRes.ok || !ptsRes.ok) throw new Error('Load error');
+      const sData = await staffRes.json();
+      setStaff(sData.staff ?? []);
+      setClients(sData.clients ?? []);
+      const pData = await ptsRes.json();
+      setPoints(pData.points ?? []);
+    } catch {
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -422,6 +423,17 @@ export default function AdminStaffPage() {
 
       {loading ? (
         <div className="h-48 bg-white rounded-panel animate-pulse" />
+      ) : loadError ? (
+        <div className="bg-white rounded-panel p-8 text-center space-y-3 shadow-card">
+          <div className="font-extrabold text-slate-900">Не удалось загрузить</div>
+          <button
+            type="button"
+            onClick={loadData}
+            className="px-5 py-2.5 rounded-btn bg-brand text-white font-bold text-sm"
+          >
+            Повторить
+          </button>
+        </div>
       ) : (
         <>
           <section className="bg-white rounded-panel p-5 shadow-card border border-blue-50 space-y-4">

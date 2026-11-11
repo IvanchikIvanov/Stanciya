@@ -10,6 +10,7 @@ import type {
 export default function AdminModifiersPage() {
   const [groups, setGroups] = useState<AdminModifierGroupDto[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'ok' | 'err'; text: string } | null>(
     null
   );
@@ -26,12 +27,14 @@ export default function AdminModifiersPage() {
 
   const loadGroups = useCallback(async () => {
     setLoading(true);
+    setLoadError(false);
     try {
       const res = await fetch('/api/coffee/admin/modifiers', { cache: 'no-store' });
-      if (res.ok) {
-        const data = await res.json();
-        setGroups(data.groups ?? []);
-      }
+      if (!res.ok) throw new Error('Load error');
+      const data = await res.json();
+      setGroups(data.groups ?? []);
+    } catch {
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -368,6 +371,17 @@ export default function AdminModifiersPage() {
 
       {loading ? (
         <div className="h-48 bg-white rounded-panel animate-pulse" />
+      ) : loadError ? (
+        <div className="bg-white rounded-panel p-8 text-center space-y-3 shadow-card">
+          <div className="font-extrabold text-slate-900">Не удалось загрузить</div>
+          <button
+            type="button"
+            onClick={loadGroups}
+            className="px-5 py-2.5 rounded-btn bg-brand text-white font-bold text-sm"
+          >
+            Повторить
+          </button>
+        </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {groups.map((grp) => (

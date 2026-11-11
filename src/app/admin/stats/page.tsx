@@ -12,9 +12,11 @@ export default function AdminStatsPage() {
   const [to, setTo] = useState('');
   const [pointId, setPointId] = useState('');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   const loadStats = useCallback(async () => {
     setLoading(true);
+    setLoadError(false);
     try {
       const sp = new URLSearchParams();
       sp.set('period', period);
@@ -25,10 +27,11 @@ export default function AdminStatsPage() {
       const res = await fetch(`/api/core/admin/stats?${sp.toString()}`, {
         cache: 'no-store',
       });
-      if (res.ok) {
-        const data = await res.json();
-        setBlocks(data.blocks ?? []);
-      }
+      if (!res.ok) throw new Error('Stats load failed');
+      const data = await res.json();
+      setBlocks(data.blocks ?? []);
+    } catch {
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -109,6 +112,17 @@ export default function AdminStatsPage() {
 
       {loading ? (
         <div className="h-64 bg-white rounded-panel animate-pulse" />
+      ) : loadError ? (
+        <div className="bg-white rounded-panel p-8 text-center space-y-3 shadow-card">
+          <div className="font-extrabold text-slate-900">Не удалось загрузить</div>
+          <button
+            type="button"
+            onClick={loadStats}
+            className="px-5 py-2.5 rounded-btn bg-brand text-white font-bold text-sm"
+          >
+            Повторить
+          </button>
+        </div>
       ) : (
         blocks.map((block) => (
           <section

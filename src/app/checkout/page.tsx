@@ -259,9 +259,16 @@ export default function CheckoutPage() {
           {generalError && (
             <div
               role="alert"
-              className="p-4 rounded-card bg-red-50 border border-red-200 text-red-800 text-sm font-semibold space-y-2"
+              className="p-4 rounded-card bg-red-50 border border-red-200 text-red-800 text-sm font-semibold flex flex-wrap items-center justify-between gap-3"
             >
-              <div>{generalError}</div>
+              <span>{generalError}</span>
+              <button
+                type="submit"
+                disabled={!consent || submitting}
+                className="px-3.5 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-xs font-extrabold"
+              >
+                Повторить
+              </button>
             </div>
           )}
 

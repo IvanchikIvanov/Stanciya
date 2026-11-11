@@ -28,12 +28,16 @@ export default function AdminOrdersPage() {
   const [selectedOrder, setSelectedOrder] = useState<StaffOrderDto | null>(null);
   const [cancellingOrder, setCancellingOrder] = useState<StaffOrderDto | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
 
   const fetchOrders = useCallback(
     async (isFirst = false) => {
-      if (isFirst) setLoading(true);
+      if (isFirst) {
+        setLoading(true);
+        setLoadError(false);
+      }
       try {
         const sp = new URLSearchParams();
         if (pointId) sp.set('pointId', pointId);
@@ -47,18 +51,20 @@ export default function AdminOrdersPage() {
         const res = await fetch(`/api/coffee/admin/orders?${sp.toString()}`, {
           cache: 'no-store',
         });
-        if (res.ok) {
-          const data = await res.json();
-          setOrders(data.orders ?? []);
-          setTotalCount(data.totalCount ?? 0);
-          setTotalPages(data.totalPages ?? 1);
-          if (selectedOrder) {
-            const updated = (data.orders ?? []).find(
-              (o: StaffOrderDto) => o.id === selectedOrder.id
-            );
-            if (updated) setSelectedOrder(updated);
-          }
+        if (!res.ok) throw new Error('Load error');
+        const data = await res.json();
+        setOrders(data.orders ?? []);
+        setTotalCount(data.totalCount ?? 0);
+        setTotalPages(data.totalPages ?? 1);
+        setLoadError(false);
+        if (selectedOrder) {
+          const updated = (data.orders ?? []).find(
+            (o: StaffOrderDto) => o.id === selectedOrder.id
+          );
+          if (updated) setSelectedOrder(updated);
         }
+      } catch {
+        if (isFirst) setLoadError(true);
       } finally {
         if (isFirst) setLoading(false);
       }
@@ -237,6 +243,17 @@ export default function AdminOrdersPage() {
       <div className="bg-white rounded-panel p-5 shadow-card border border-blue-50">
         {loading ? (
           <div className="h-64 animate-pulse bg-slate-100 rounded-card" />
+        ) : loadError ? (
+          <div className="py-10 text-center space-y-3">
+            <div className="font-extrabold text-slate-900">Не удалось загрузить</div>
+            <button
+              type="button"
+              onClick={() => fetchOrders(true)}
+              className="px-5 py-2.5 rounded-btn bg-brand text-white font-bold text-sm"
+            >
+              Повторить
+            </button>
+          </div>
         ) : orders.length === 0 ? (
           <div className="py-10 text-center text-slate-600 font-bold text-sm">
             Заказов по выбранным фильтрам не найдено
