@@ -1,4 +1,6 @@
 import type { PlatformModule } from '@/core/types';
+import { attachGuestOrderToUserByAccessKey } from './orders/service';
+import { getCoffeeStatsBlock } from './stats/service';
 
 export const coffeeModule: PlatformModule = {
   id: 'coffee',
@@ -33,4 +35,6 @@ export const coffeeModule: PlatformModule = {
     subtitle: 'Свежий кофе и выпечка к вашему приезду на точки «СТАНЦИЯ» в Миассе',
     href: '/',
   },
+  getStatsBlock: getCoffeeStatsBlock,
+  attachGuestOrderToUser: attachGuestOrderToUserByAccessKey,
 };
