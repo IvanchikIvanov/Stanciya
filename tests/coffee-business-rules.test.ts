@@ -1,3 +1,4 @@
+import './setup-env';
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
@@ -5,7 +6,10 @@ import { closeDb, query } from '../src/core/db';
 import { runSeed } from '../scripts/seed';
 import { loginStaff } from '../src/core/auth/service';
 import { calculatePointAvailability, listPublicPoints } from '../src/core/points/service';
-import { getPublicCatalog } from '../src/modules/coffee/catalog/service';
+import { getPublicCatalog, verifyCartItems } from '../src/modules/coffee/catalog/service';
+import { getStopListView, setProductStopped } from '../src/modules/coffee/stoplist/service';
+import { getIntegerSetting, updateSettings } from '../src/core/settings/service';
+import '../src/modules';
 import {
   cancelOrderByGuest,
   createCoffeeOrder,
@@ -17,6 +21,11 @@ import {
 
 // Фиксированное тестовое время: 12:03 по Миассу (Asia/Yekaterinburg, UTC+5 -> 07:03 UTC)
 const TEST_NOW = new Date('2026-11-12T07:03:00.000Z');
+
+async function orderIdByNumber(number: number): Promise<number> {
+  const res = await query<{ id: number }>('SELECT id FROM coffee_orders WHERE number = $1', [number]);
+  return res.rows[0].id;
+}
 
 describe('Stage 4: Coffee Business Rules (Section 5 & Section 6)', () => {
   before(async () => {
@@ -227,64 +236,18 @@ describe('Stage 4: Coffee Business Rules (Section 5 & Section 6)', () => {
     assert.equal(orderDup.accessKey, order1.accessKey);
   });
 
-  it('5.2 & 16 enforces max 2 active orders per phone and respects MAX_ACTIVE_ORDERS_PER_PHONE=0 toggle', async () => {
+  it('4.4 order limit per phone: unlimited by default, configurable in settings', async () => {
     const { products } = await getPublicCatalog();
     const croissant = products.find((p) => p.name === 'Круассан')!;
     const points = await listPublicPoints('coffee', TEST_NOW);
     const point = points[0];
     const phone = '+79005556677';
+    const admin = (
+      await loginStaff(process.env.SEED_ADMIN_LOGIN!, process.env.SEED_ADMIN_PASSWORD!)
+    ).user;
 
-    await createCoffeeOrder(
-      {
-        idempotencyKey: crypto.randomUUID(),
-        pointId: point.id,
-        isAsap: true,
-        customerName: 'Анна',
-        customerPhone: phone,
-        consent: true,
-        items: [{ productId: croissant.id, optionIds: [], quantity: 1 }],
-      },
-      null,
-      TEST_NOW
-    );
-
-    const secondOrder = await createCoffeeOrder(
-      {
-        idempotencyKey: crypto.randomUUID(),
-        pointId: point.id,
-        isAsap: true,
-        customerName: 'Анна',
-        customerPhone: phone,
-        consent: true,
-        items: [{ productId: croissant.id, optionIds: [], quantity: 1 }],
-      },
-      null,
-      TEST_NOW
-    );
-
-    // 3rd active order must fail with ACTIVE_ORDERS_LIMIT
-    await assert.rejects(
-      () =>
-        createCoffeeOrder(
-          {
-            idempotencyKey: crypto.randomUUID(),
-            pointId: point.id,
-            isAsap: true,
-            customerName: 'Анна',
-            customerPhone: phone,
-            consent: true,
-            items: [{ productId: croissant.id, optionIds: [], quantity: 1 }],
-          },
-          null,
-          TEST_NOW
-        ),
-      (err: any) => err.code === 'ACTIVE_ORDERS_LIMIT'
-    );
-
-    // Section 16 toggle: setting MAX_ACTIVE_ORDERS_PER_PHONE=0 disables the limit
-    process.env.MAX_ACTIVE_ORDERS_PER_PHONE = '0';
-    try {
-      const thirdWhenDisabled = await createCoffeeOrder(
+    const place = () =>
+      createCoffeeOrder(
         {
           idempotencyKey: crypto.randomUUID(),
           pointId: point.id,
@@ -297,15 +260,202 @@ describe('Stage 4: Coffee Business Rules (Section 5 & Section 6)', () => {
         null,
         TEST_NOW
       );
-      assert.equal(thirdWhenDisabled.status, 'new');
-      await cancelOrderByGuest(thirdWhenDisabled.accessKey);
-    } finally {
-      process.env.MAX_ACTIVE_ORDERS_PER_PHONE = '2';
-    }
 
-    // Cancel 2nd order as guest -> now another order can be placed
-    const cancelledByGuest = await cancelOrderByGuest(secondOrder.accessKey);
-    assert.equal(cancelledByGuest.status, 'cancelled');
+    // По умолчанию ограничения нет: три активных заказа подряд
+    assert.equal(await getIntegerSetting('coffee.maxActiveOrdersPerPhone', -1), 0);
+    const placed = [await place(), await place(), await place()];
+    assert.ok(placed.every((o) => o.status === 'new'));
+
+    // Администратор ставит лимит 1: следующий заказ отклоняется
+    await updateSettings({ 'coffee.maxActiveOrdersPerPhone': 1 }, admin.id);
+    await assert.rejects(
+      () => place(),
+      (err: any) =>
+        err.code === 'ACTIVE_ORDERS_LIMIT' && /уже есть активный заказ/.test(err.message)
+    );
+
+    // Лимит 4: при трёх активных заказах четвёртый проходит, пятый нет
+    await updateSettings({ 'coffee.maxActiveOrdersPerPhone': 4 }, admin.id);
+    placed.push(await place());
+    await assert.rejects(() => place(), (err: any) => err.code === 'ACTIVE_ORDERS_LIMIT');
+
+    // Отмена освобождает место
+    await cancelOrderByGuest(placed[0].accessKey);
+    placed.push(await place());
+
+    // Недопустимое значение настройки не сохраняется
+    await assert.rejects(
+      () => updateSettings({ 'coffee.maxActiveOrdersPerPhone': -1 }, admin.id),
+      (err: any) => err.code === 'VALIDATION_ERROR'
+    );
+    await assert.rejects(
+      () => updateSettings({ 'coffee.unknown': 1 }, admin.id),
+      (err: any) => err.code === 'UNKNOWN_SETTING'
+    );
+
+    await updateSettings({ 'coffee.maxActiveOrdersPerPhone': 0 }, admin.id);
+    for (const o of placed.slice(1)) await cancelOrderByGuest(o.accessKey);
+  });
+
+  it('4.4 order above the threshold requires a call before it is accepted', async () => {
+    const { products } = await getPublicCatalog();
+    const croissant = products.find((p) => p.name === 'Круассан')!; // 170 ₽
+    const points = await listPublicPoints('coffee', TEST_NOW);
+    const point = points[0];
+    const admin = (
+      await loginStaff(process.env.SEED_ADMIN_LOGIN!, process.env.SEED_ADMIN_PASSWORD!)
+    ).user;
+
+    const place = (quantity: number, phone: string) =>
+      createCoffeeOrder(
+        {
+          idempotencyKey: crypto.randomUUID(),
+          pointId: point.id,
+          isAsap: true,
+          customerName: 'Олег',
+          customerPhone: phone,
+          consent: true,
+          items: [{ productId: croissant.id, optionIds: [], quantity }],
+        },
+        null,
+        TEST_NOW
+      );
+
+    assert.equal(await getIntegerSetting('coffee.callConfirmThreshold', -1), 1000);
+
+    // Ровно на пороге звонок не нужен: «выше 1000 ₽»
+    const atThreshold = await createCoffeeOrder(
+      {
+        idempotencyKey: crypto.randomUUID(),
+        pointId: point.id,
+        isAsap: true,
+        customerName: 'Олег',
+        customerPhone: '+79001110001',
+        consent: true,
+        items: [{ productId: croissant.id, optionIds: [], quantity: 5 }], // 850 ₽
+      },
+      null,
+      TEST_NOW
+    );
+    assert.equal(atThreshold.total, 850);
+    assert.equal(atThreshold.requiresCall, false);
+
+    const big = await place(7, '+79001110002'); // 1190 ₽
+    assert.equal(big.total, 1190);
+    assert.equal(big.requiresCall, true);
+
+    const staffView = (await getStaffOrderById(await orderIdByNumber(big.number), admin))!;
+    assert.equal(staffView.requiresCall, true);
+    assert.equal(staffView.callConfirmedAt, null);
+
+    // Принять без отметки о звонке нельзя
+    await assert.rejects(
+      () =>
+        transitionOrderStatusByStaff(
+          { orderId: staffView.id, expectedFromStatus: 'new', toStatus: 'accepted' },
+          admin
+        ),
+      (err: any) => err.code === 'CALL_CONFIRMATION_REQUIRED'
+    );
+
+    // Отмена работает и без звонка
+    const toCancel = await place(7, '+79001110003');
+    const toCancelStaff = (await getStaffOrderById(await orderIdByNumber(toCancel.number), admin))!;
+    const cancelled = await transitionOrderStatusByStaff(
+      {
+        orderId: toCancelStaff.id,
+        expectedFromStatus: 'new',
+        toStatus: 'cancelled',
+        cancelReason: 'guest_request',
+      },
+      admin
+    );
+    assert.equal(cancelled.status, 'cancelled');
+
+    // С отметкой о звонке заказ принимается и звонок фиксируется
+    const accepted = await transitionOrderStatusByStaff(
+      {
+        orderId: staffView.id,
+        expectedFromStatus: 'new',
+        toStatus: 'accepted',
+        callConfirmed: true,
+      },
+      admin
+    );
+    assert.equal(accepted.status, 'accepted');
+    assert.ok(accepted.callConfirmedAt);
+
+    // Дальше по цепочке звонок не требуется
+    const cooking = await transitionOrderStatusByStaff(
+      { orderId: staffView.id, expectedFromStatus: 'accepted', toStatus: 'cooking' },
+      admin
+    );
+    assert.equal(cooking.status, 'cooking');
+
+    // Порог 0 отключает звонок
+    await updateSettings({ 'coffee.callConfirmThreshold': 0 }, admin.id);
+    const noCall = await place(7, '+79001110004');
+    assert.equal(noCall.requiresCall, false);
+    await updateSettings({ 'coffee.callConfirmThreshold': 1000 }, admin.id);
+
+    await query("UPDATE coffee_orders SET status = 'cancelled' WHERE status <> 'cancelled'");
+  });
+
+  it('3.12 barista stop-list hides a product only at their own point', async () => {
+    const { products } = await getPublicCatalog();
+    const croissant = products.find((p) => p.name === 'Круассан')!;
+    const points = await listPublicPoints('coffee', TEST_NOW);
+    const barista1 = (
+      await loginStaff(process.env.SEED_BARISTA1_LOGIN!, process.env.SEED_BARISTA1_PASSWORD!)
+    ).user;
+    const ownPoint = points.find((p) => p.id === barista1.pointId)!;
+    const otherPoint = points.find((p) => p.id !== barista1.pointId)!;
+
+    const place = (pointId: number) =>
+      createCoffeeOrder(
+        {
+          idempotencyKey: crypto.randomUUID(),
+          pointId,
+          isAsap: true,
+          customerName: 'Ира',
+          customerPhone: '+79002223344',
+          consent: true,
+          items: [{ productId: croissant.id, optionIds: [], quantity: 1 }],
+        },
+        null,
+        TEST_NOW
+      );
+
+    const view = await setProductStopped(barista1, { productId: croissant.id, stopped: true });
+    assert.equal(view.pointId, ownPoint.id);
+    assert.ok(view.items.find((i) => i.productId === croissant.id)?.stopped);
+
+    // На своей точке позицию заказать нельзя, на другой — можно
+    await assert.rejects(() => place(ownPoint.id), (err: any) => err.code === 'PRODUCT_UNAVAILABLE');
+    const elsewhere = await place(otherPoint.id);
+    assert.equal(elsewhere.status, 'new');
+
+    // Сверка корзины учитывает выбранную точку
+    const item = [{ productId: croissant.id, optionIds: [], quantity: 1 }];
+    assert.equal((await verifyCartItems(item, ownPoint.id)).hasUnavailable, true);
+    assert.equal((await verifyCartItems(item, otherPoint.id)).hasUnavailable, false);
+
+    // Бариста не управляет стоп-листом чужой точки
+    await assert.rejects(
+      () => setProductStopped(barista1, { productId: croissant.id, stopped: true, pointId: otherPoint.id }),
+      (err: any) => err.code === 'POINT_NOT_FOUND'
+    );
+    await assert.rejects(
+      () => getStopListView(barista1, otherPoint.id),
+      (err: any) => err.code === 'POINT_NOT_FOUND'
+    );
+
+    // Возврат в наличие снова открывает заказ
+    await setProductStopped(barista1, { productId: croissant.id, stopped: false });
+    const back = await place(ownPoint.id);
+    assert.equal(back.status, 'new');
+
+    await query("UPDATE coffee_orders SET status = 'cancelled' WHERE status <> 'cancelled'");
   });
 
   it('5.1 & 5.4 & 6 enforces status chain, atomic updates, point isolation, and no_show_count', async () => {

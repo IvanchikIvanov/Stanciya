@@ -7,6 +7,7 @@ import { Logo } from '@/core/ui/Logo';
 import { NetworkBanner } from '@/core/ui/NetworkBanner';
 import type { PointDto } from '@/core/points/service';
 import {
+  getPickupChoiceFromStorage,
   getSelectedPointIdFromStorage,
   setSelectedPointIdInStorage,
   useCart,
@@ -33,6 +34,11 @@ export default function CheckoutPage() {
   const [customerPhone, setCustomerPhone] = useState('+7 ');
   const [comment, setComment] = useState('');
   const [consent, setConsent] = useState(false);
+  // Предложение создать профиль появляется, когда гость ввёл имя (имя на стакан)
+  const [isClient, setIsClient] = useState(false);
+  const [nameEntered, setNameEntered] = useState(false);
+  const [createAccount, setCreateAccount] = useState(false);
+  const [accountPassword, setAccountPassword] = useState('');
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -67,11 +73,19 @@ export default function CheckoutPage() {
         } else if (openPoints.length > 0) {
           setSelectedPointId(openPoints[0].id);
         }
+
+        // Время, выбранное в блоке «Твой предзаказ» на главной
+        const pickupChoice = getPickupChoiceFromStorage();
+        if (pickupChoice) {
+          setIsAsap(pickupChoice.isAsap);
+          if (!pickupChoice.isAsap && pickupChoice.time) setPickupTime(pickupChoice.time);
+        }
       }
 
       if (meRes.ok) {
         const meData = await meRes.json();
         if (meData.user && meData.user.role === 'client') {
+          setIsClient(true);
           setCustomerName((prev) => prev || meData.user.name || '');
           if (meData.user.phone) {
             setCustomerPhone(meData.user.phone);
@@ -138,6 +152,10 @@ export default function CheckoutPage() {
       nextFieldErrors.comment = 'Комментарий не должен превышать 200 символов';
     }
 
+    if (!isClient && createAccount && accountPassword.length < 8) {
+      nextFieldErrors.accountPassword = 'Пароль должен содержать не менее 8 символов';
+    }
+
     if (Object.keys(nextFieldErrors).length > 0) {
       setFieldErrors(nextFieldErrors);
       formTopRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -193,7 +211,31 @@ export default function CheckoutPage() {
       }
 
       cart.clear();
-      router.push(`/order/${data.order.accessKey}`);
+
+      // Профиль создаём после заказа: если не получилось (номер уже занят и т. п.),
+      // заказ всё равно оформлен, а страница заказа снова предложит сохранить данные
+      let registered = '';
+      if (!isClient && createAccount) {
+        try {
+          const regRes = await fetch('/api/core/auth/client/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: customerName.trim(),
+              phone: customerPhone,
+              password: accountPassword,
+              passwordConfirm: accountPassword,
+              consent,
+              attachOrderAccessKey: data.order.accessKey,
+            }),
+          });
+          registered = regRes.ok ? '?profile=created' : '?profile=failed';
+        } catch {
+          registered = '?profile=failed';
+        }
+      }
+
+      router.push(`/order/${data.order.accessKey}${registered}`);
     } catch {
       setGeneralError(
         'Не удалось отправить заказ из-за ошибки сети. Проверьте соединение и нажмите «Повторить».'
@@ -206,10 +248,10 @@ export default function CheckoutPage() {
   if (cart.hydrated && cart.items.length === 0) {
     return (
       <div className="min-h-screen bg-brand-surface flex flex-col">
-        <header className="bg-brand text-white shadow-sm">
+        <header className="bg-white/90 backdrop-blur border-b border-slate-200/80 sticky top-0 z-30">
           <div className="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between">
-            <Logo variant="light" subtitle="Оформление" />
-            <Link href="/" className="text-sm font-bold underline">
+            <Logo variant="dark" subtitle="Оформление" />
+            <Link href="/" className="text-sm font-bold text-slate-800 underline">
               В каталог
             </Link>
           </div>
@@ -233,12 +275,12 @@ export default function CheckoutPage() {
     <div className="min-h-screen bg-brand-surface flex flex-col pb-12">
       <NetworkBanner />
 
-      <header className="bg-brand text-white shadow-sm">
+      <header className="bg-white/90 backdrop-blur border-b border-slate-200/80 sticky top-0 z-30">
         <div className="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between">
-          <Logo variant="light" subtitle="Оформление заказа" />
+          <Logo variant="dark" subtitle="Оформление заказа" />
           <Link
             href="/cart"
-            className="px-3.5 py-2 rounded-btn bg-white/15 hover:bg-white/25 text-xs sm:text-sm font-bold transition"
+            className="px-3.5 py-2 rounded-btn border border-slate-300 bg-white text-slate-800 hover:border-brand hover:text-brand text-xs sm:text-sm font-bold transition"
           >
             ← В корзину
           </Link>
@@ -452,6 +494,9 @@ export default function CheckoutPage() {
                     setCustomerName(e.target.value);
                     setIdempotencyKey(generateUuid());
                   }}
+                  onBlur={() => {
+                    if (customerName.trim().length >= 2) setNameEntered(true);
+                  }}
                   placeholder="Например, Александр"
                   className="w-full px-4 py-3 rounded-btn border border-slate-300 text-sm text-slate-900"
                 />
@@ -511,6 +556,62 @@ export default function CheckoutPage() {
                 </p>
               )}
             </div>
+
+            {/* Предложение профиля: после того как гость ввёл имя; заказ без него не блокируется */}
+            {!isClient && (nameEntered || createAccount) && (
+              <div className="rounded-card border border-brand/25 bg-brand-light p-4 space-y-3">
+                <label className="flex items-start gap-3 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={createAccount}
+                    onChange={(e) => {
+                      setCreateAccount(e.target.checked);
+                      if (!e.target.checked) setAccountPassword('');
+                    }}
+                    className="mt-0.5 w-5 h-5 accent-brand shrink-0"
+                  />
+                  <span>
+                    <span className="block text-sm font-extrabold text-slate-900">
+                      {customerName.trim()
+                        ? `${customerName.trim()}, запомнить вас?`
+                        : 'Запомнить вас?'}
+                    </span>
+                    <span className="block text-xs text-slate-600 mt-0.5">
+                      Создадим профиль вместе с заказом: в следующий раз имя и телефон подставятся
+                      сами, а заказы будут в истории. Необязательно.
+                    </span>
+                  </span>
+                </label>
+
+                {createAccount && (
+                  <div>
+                    <label
+                      htmlFor="checkout-account-password"
+                      className="block text-sm font-bold text-slate-700 mb-1.5"
+                    >
+                      Придумайте пароль (не менее 8 символов)
+                    </label>
+                    <input
+                      id="checkout-account-password"
+                      type="password"
+                      autoComplete="new-password"
+                      minLength={8}
+                      value={accountPassword}
+                      onChange={(e) => setAccountPassword(e.target.value)}
+                      className="w-full sm:max-w-xs px-4 py-3 rounded-btn border border-slate-300 bg-white text-sm text-slate-900"
+                    />
+                    {fieldErrors.accountPassword && (
+                      <p className="text-xs text-red-600 font-semibold mt-1">
+                        {fieldErrors.accountPassword}
+                      </p>
+                    )}
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      Войти можно будет по номеру телефона и этому паролю.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
           </section>
 
           {/* 4. Подтверждение и согласие */}

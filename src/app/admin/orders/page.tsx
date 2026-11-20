@@ -31,6 +31,12 @@ export default function AdminOrdersPage() {
   const [loadError, setLoadError] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [callDone, setCallDone] = useState(false);
+  const needsCall =
+    selectedOrder !== null &&
+    selectedOrder.status === 'new' &&
+    selectedOrder.requiresCall &&
+    !selectedOrder.callConfirmedAt;
 
   const fetchOrders = useCallback(
     async (isFirst = false) => {
@@ -106,6 +112,10 @@ export default function AdminOrdersPage() {
           toStatus,
           cancelReason,
           cancelComment,
+          callConfirmed:
+            ord.status === 'new' && toStatus === 'accepted' && ord.requiresCall && !ord.callConfirmedAt
+              ? callDone
+              : undefined,
         }),
       });
       const data = await res.json();
@@ -276,7 +286,7 @@ export default function AdminOrdersPage() {
                 {orders.map((ord) => (
                   <tr
                     key={ord.id}
-                    onClick={() => setSelectedOrder(ord)}
+                    onClick={() => { setSelectedOrder(ord); setCallDone(false); }}
                     className={`cursor-pointer hover:bg-blue-50/50 transition ${
                       selectedOrder?.id === ord.id ? 'bg-blue-50' : ''
                     }`}
@@ -303,6 +313,11 @@ export default function AdminOrdersPage() {
                       {ord.noShowCount > 0 && (
                         <span className="inline-block mt-0.5 px-2 py-0.5 rounded bg-red-100 text-red-800 text-[10px] font-extrabold">
                           Не забрал заказов: {ord.noShowCount}
+                        </span>
+                      )}
+                      {ord.status === 'new' && ord.requiresCall && !ord.callConfirmedAt && (
+                        <span className="inline-block mt-0.5 ml-1 px-2 py-0.5 rounded bg-amber-100 text-amber-900 text-[10px] font-extrabold">
+                          Нужен звонок
                         </span>
                       )}
                     </td>
@@ -402,6 +417,27 @@ export default function AdminOrdersPage() {
                   Не забрал заказов: {selectedOrder.noShowCount}
                 </div>
               )}
+              {needsCall && (
+                <div className="mt-1 p-2.5 rounded bg-amber-100 border border-amber-300 space-y-1.5">
+                  <div className="text-xs font-extrabold text-amber-950">
+                    Заказ на {selectedOrder.total} ₽ — позвоните гостю и подтвердите заказ
+                  </div>
+                  <label className="flex items-center gap-2 text-xs font-bold text-amber-950 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4 accent-amber-600"
+                      checked={callDone}
+                      onChange={(e) => setCallDone(e.target.checked)}
+                    />
+                    Звонок сделан, гость подтвердил
+                  </label>
+                </div>
+              )}
+              {selectedOrder.requiresCall && selectedOrder.callConfirmedAt && (
+                <div className="inline-block px-2.5 py-1 rounded bg-emerald-100 text-emerald-800 text-xs font-extrabold">
+                  Звонок подтверждён
+                </div>
+              )}
               {selectedOrder.comment && (
                 <div className="text-xs text-slate-700 pt-1">
                   <b>Комментарий:</b> {selectedOrder.comment}
@@ -454,9 +490,9 @@ export default function AdminOrdersPage() {
                   {selectedOrder.status === 'new' && (
                     <button
                       type="button"
-                      disabled={busyId === selectedOrder.id}
+                      disabled={busyId === selectedOrder.id || (needsCall && !callDone)}
                       onClick={() => handleTransition(selectedOrder, 'accepted')}
-                      className="px-4 py-2 rounded-btn bg-brand text-white font-bold text-xs"
+                      className="px-4 py-2 rounded-btn bg-brand text-white font-bold text-xs disabled:opacity-50"
                     >
                       Принять
                     </button>

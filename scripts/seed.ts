@@ -15,20 +15,16 @@ export async function runSeed(): Promise<void> {
   const barista1Password = process.env.SEED_BARISTA1_PASSWORD || 'ChangeMeBarista1!';
   const barista2Login = process.env.SEED_BARISTA2_LOGIN || 'barista_mashgorodok';
   const barista2Password = process.env.SEED_BARISTA2_PASSWORD || 'ChangeMeBarista2!';
+  const barista3Login = process.env.SEED_BARISTA3_LOGIN || 'barista_point3';
+  const barista3Password = process.env.SEED_BARISTA3_PASSWORD || 'ChangeMeBarista3!';
 
   await transaction(async (tx) => {
-    // 1. Точки в г. Миасс (часы работы 08:00-21:00 ежедневно)
+    // 1. Три точки-заготовки в г. Миасс (часы работы 08:00-21:00 ежедневно).
+    // Адресов у заказчика пока нет: название, адрес и телефон заполняются в админке («Точки»).
     const pointsData = [
-      {
-        name: 'СТАНЦИЯ Автозавод',
-        address: 'г. Миасс, пр. Автозаводцев, 54',
-        phone: '+79000112233',
-      },
-      {
-        name: 'СТАНЦИЯ Машгородок',
-        address: 'г. Миасс, пр. Макеева, 25',
-        phone: '+79000112244',
-      },
+      { name: 'СТАНЦИЯ — точка 1', address: 'г. Миасс, адрес уточняется', phone: '+79000000001' },
+      { name: 'СТАНЦИЯ — точка 2', address: 'г. Миасс, адрес уточняется', phone: '+79000000002' },
+      { name: 'СТАНЦИЯ — точка 3', address: 'г. Миасс, адрес уточняется', phone: '+79000000003' },
     ];
 
     const pointIds: number[] = [];
@@ -41,14 +37,11 @@ export async function runSeed(): Promise<void> {
       let pointId: number;
       if (existingPt.rowCount > 0) {
         pointId = existingPt.rows[0].id;
-        await tx.query(
-          'UPDATE points SET address = $1, phone = $2 WHERE id = $3',
-          [pt.address, pt.phone, pointId]
-        );
+        // Существующую точку не перезаписываем: её адрес мог уже заполнить администратор
       } else {
         const insertedPt = await tx.query<{ id: number }>(
           `INSERT INTO points (name, address, phone, prep_minutes, slot_step_minutes, accepts_orders, is_hidden)
-           VALUES ($1, $2, $3, 10, 10, TRUE, FALSE)
+           VALUES ($1, $2, $3, 10, 5, TRUE, FALSE)
            RETURNING id`,
           [pt.name, pt.address, pt.phone]
         );
@@ -60,8 +53,7 @@ export async function runSeed(): Promise<void> {
         await tx.query(
           `INSERT INTO point_hours (point_id, weekday, opens_at, closes_at, is_closed)
            VALUES ($1, $2, '08:00', '21:00', FALSE)
-           ON CONFLICT (point_id, weekday) DO UPDATE
-           SET opens_at = EXCLUDED.opens_at, closes_at = EXCLUDED.closes_at, is_closed = EXCLUDED.is_closed`,
+           ON CONFLICT (point_id, weekday) DO NOTHING`,
           [pointId, weekday]
         );
       }
@@ -78,6 +70,7 @@ export async function runSeed(): Promise<void> {
     const adminHash = await bcrypt.hash(adminPassword, 10);
     const barista1Hash = await bcrypt.hash(barista1Password, 10);
     const barista2Hash = await bcrypt.hash(barista2Password, 10);
+    const barista3Hash = await bcrypt.hash(barista3Password, 10);
 
     const staffSeeds = [
       {
@@ -88,18 +81,25 @@ export async function runSeed(): Promise<void> {
         pointId: null,
       },
       {
-        name: 'Бариста Автозавод',
+        name: 'Бариста, точка 1',
         login: barista1Login,
         passwordHash: barista1Hash,
         role: 'barista',
         pointId: pointIds[0],
       },
       {
-        name: 'Бариста Машгородок',
+        name: 'Бариста, точка 2',
         login: barista2Login,
         passwordHash: barista2Hash,
         role: 'barista',
         pointId: pointIds[1],
+      },
+      {
+        name: 'Бариста, точка 3',
+        login: barista3Login,
+        passwordHash: barista3Hash,
+        role: 'barista',
+        pointId: pointIds[2],
       },
     ];
 

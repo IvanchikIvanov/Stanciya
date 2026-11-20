@@ -12,13 +12,14 @@ const schema = z.object({
       clientUnitPrice: z.number().int().optional(),
     })
   ),
+  pointId: z.number().int().positive().nullable().optional(),
 });
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
     const parsed = schema.parse(body);
-    const result = await verifyCartItems(parsed.items);
+    const result = await verifyCartItems(parsed.items, parsed.pointId ?? null);
     return NextResponse.json(result);
   } catch (err) {
     return handleApiError(err);

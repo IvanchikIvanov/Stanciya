@@ -100,7 +100,7 @@ export function calculatePointAvailability(
     };
   }
 
-  const step = Math.max(1, point.slotStepMinutes || 10);
+  const step = Math.max(1, point.slotStepMinutes || 5);
   const prep = Math.max(1, point.prepMinutes || 10);
 
   // «Как можно скорее» = сейчас + prep_minutes, округлить вверх до шага

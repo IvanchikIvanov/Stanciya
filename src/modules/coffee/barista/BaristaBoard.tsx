@@ -6,6 +6,7 @@ import { formatPhoneDisplay } from '@/core/phone';
 import { formatMiassTime } from '@/core/time';
 import type { OrderStatus, StaffOrderDto } from '../orders/service';
 import { CancelOrderModal } from './CancelOrderModal';
+import { StopListModal } from './StopListModal';
 import { playNewOrderBeep, unlockAudioContext } from './sound';
 
 type FilterTab = 'active' | 'new' | 'accepted' | 'cooking' | 'ready' | 'completed';
@@ -44,7 +45,16 @@ export function BaristaBoard({
   const [toastMessages, setToastMessages] = useState<string[]>([]);
   const [busyOrderId, setBusyOrderId] = useState<number | null>(null);
   const [shiftByOrder, setShiftByOrder] = useState<Record<number, 0 | 5 | 10 | 15>>({});
+  // Отметка «Звонок сделан» для заказов дороже порога (п. 4.4 ТЗ)
+  const [callDoneByOrder, setCallDoneByOrder] = useState<Record<number, boolean>>({});
   const [cancellingOrder, setCancellingOrder] = useState<StaffOrderDto | null>(null);
+  const [stopListOpen, setStopListOpen] = useState(false);
+  // Часы для подписей «через N мин»: обновляются раз в 20 секунд
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNowMs(Date.now()), 20_000);
+    return () => clearInterval(t);
+  }, []);
   const [actionError, setActionError] = useState<string | null>(null);
 
   const knownActiveMapRef = useRef<Map<number, { number: number; status: OrderStatus }> | null>(
@@ -164,6 +174,10 @@ export function BaristaBoard({
         order.status === 'new' && toStatus === 'accepted'
           ? shiftByOrder[order.id] ?? 0
           : undefined;
+      const callConfirmed =
+        order.status === 'new' && toStatus === 'accepted' && needsCallConfirmation(order)
+          ? callDoneByOrder[order.id] === true
+          : undefined;
 
       const res = await fetch(`/api/coffee/barista/orders/${order.id}/status`, {
         method: 'POST',
@@ -174,6 +188,7 @@ export function BaristaBoard({
           shiftMinutes,
           cancelReason,
           cancelComment,
+          callConfirmed,
         }),
       });
 
@@ -212,7 +227,6 @@ export function BaristaBoard({
     router.push('/staff/login');
   }
 
-  const nowMs = Date.now();
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col">
@@ -232,18 +246,17 @@ export function BaristaBoard({
       </div>
 
       {/* Шапка панели бариста */}
-      <header className="bg-brand-deep text-white shadow-md">
+      <header className="bg-brand-ink text-white shadow-md">
         <div className="max-w-7xl mx-auto px-4 py-3.5 flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2.5">
-              <span className="w-9 h-9 rounded-xl bg-brand-accent text-brand-deep font-extrabold flex items-center justify-center">
-                ⚡
-              </span>
-              <div>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/brand/logo-white.png" alt="СТАНЦИЯ" className="h-6 w-auto mr-1" />
+              <div className="pl-3 border-l border-white/20">
                 <div className="font-extrabold text-base leading-none">
                   {pointName}
                 </div>
-                <div className="text-xs text-blue-200 mt-0.5">
+                <div className="text-xs text-white/60 mt-0.5">
                   Панель бариста · {staffName}
                 </div>
               </div>
@@ -271,15 +284,23 @@ export function BaristaBoard({
               <button
                 type="button"
                 onClick={handleEnableSound}
-                className="min-h-[44px] px-4 py-2 rounded-btn bg-brand-accent text-brand-deep font-extrabold text-xs sm:text-sm shadow-xs hover:bg-yellow-300 transition"
+                className="min-h-[44px] px-4 py-2 rounded-btn bg-white text-brand font-extrabold text-xs sm:text-sm shadow-xs hover:bg-brand-light transition"
               >
                 🔔 Включить звук
               </button>
             ) : (
-              <span className="px-3 py-2 rounded-btn bg-white/10 text-xs font-semibold text-blue-100">
+              <span className="px-3 py-2 rounded-btn bg-white/10 text-xs font-semibold text-white/80">
                 🔊 Звук включён
               </span>
             )}
+
+            <button
+              type="button"
+              onClick={() => setStopListOpen(true)}
+              className="min-h-[44px] px-3.5 py-2 rounded-btn bg-white/10 hover:bg-white/20 text-xs sm:text-sm font-bold"
+            >
+              Стоп-лист
+            </button>
 
             {isAdmin && (
               <a
@@ -406,8 +427,11 @@ export function BaristaBoard({
               const isActiveStatus = ['new', 'accepted', 'cooking', 'ready'].includes(
                 ord.status
               );
-              const isOverdue =
-                isActiveStatus && new Date(ord.pickupAt).getTime() < nowMs;
+              const minutesLeft = Math.round(
+                (new Date(ord.pickupAt).getTime() - nowMs) / 60_000
+              );
+              const isOverdue = isActiveStatus && minutesLeft < 0;
+              const isSoon = isActiveStatus && !isOverdue && minutesLeft <= 15;
               const isBusy = busyOrderId === ord.id;
               const selectedShift = shiftByOrder[ord.id] ?? 0;
 
@@ -450,13 +474,25 @@ export function BaristaBoard({
 
                       <div className="text-right">
                         <div
-                          className={`text-lg font-extrabold ${
+                          className={`text-2xl font-extrabold leading-none ${
                             isOverdue ? 'text-red-600' : 'text-slate-900'
                           }`}
                         >
-                          К {ord.pickupTimeFormatted}
-                          {isOverdue && ' (просрочен)'}
+                          {ord.pickupTimeFormatted}
                         </div>
+                        {isActiveStatus && (
+                          <div
+                            className={`inline-block mt-1.5 px-2.5 py-1 rounded-pill text-xs font-extrabold ${
+                              isOverdue
+                                ? 'bg-red-600 text-white'
+                                : isSoon
+                                ? 'bg-amber-400 text-amber-950'
+                                : 'bg-slate-100 text-slate-700'
+                            }`}
+                          >
+                            {formatMinutesLeft(minutesLeft)}
+                          </div>
+                        )}
                         <span
                           className={`inline-block mt-0.5 px-2.5 py-0.5 rounded-pill text-xs font-extrabold ${
                             ord.status === 'new'
@@ -494,6 +530,35 @@ export function BaristaBoard({
                       {ord.noShowCount > 0 && (
                         <div className="inline-block px-2.5 py-1 rounded-lg bg-red-100 text-red-800 text-xs font-extrabold">
                           ⚠ Не забрал заказов: {ord.noShowCount}
+                        </div>
+                      )}
+
+                      {needsCallConfirmation(ord) && (
+                        <div className="mt-2 p-2.5 rounded-lg bg-amber-100 border border-amber-300 space-y-2">
+                          <div className="text-xs font-extrabold text-amber-950">
+                            📞 Заказ на {ord.total} ₽ — позвоните гостю и подтвердите заказ
+                          </div>
+                          <label className="flex items-center gap-2.5 min-h-[44px] cursor-pointer text-sm font-bold text-amber-950">
+                            <input
+                              type="checkbox"
+                              className="w-5 h-5 accent-amber-600"
+                              checked={callDoneByOrder[ord.id] === true}
+                              disabled={isOffline || isBusy}
+                              onChange={(e) =>
+                                setCallDoneByOrder((prev) => ({
+                                  ...prev,
+                                  [ord.id]: e.target.checked,
+                                }))
+                              }
+                            />
+                            Звонок сделан, гость подтвердил
+                          </label>
+                        </div>
+                      )}
+
+                      {ord.requiresCall && ord.callConfirmedAt && (
+                        <div className="inline-block mt-1 px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-800 text-xs font-extrabold">
+                          ✓ Звонок подтверждён
                         </div>
                       )}
                     </div>
@@ -586,7 +651,16 @@ export function BaristaBoard({
                         {ord.status === 'new' && (
                           <button
                             type="button"
-                            disabled={isOffline || isBusy}
+                            disabled={
+                              isOffline ||
+                              isBusy ||
+                              (needsCallConfirmation(ord) && callDoneByOrder[ord.id] !== true)
+                            }
+                            title={
+                              needsCallConfirmation(ord) && callDoneByOrder[ord.id] !== true
+                                ? 'Сначала позвоните гостю и отметьте «Звонок сделан»'
+                                : undefined
+                            }
                             onClick={() => handleStatusTransition(ord, 'accepted')}
                             className="flex-1 min-h-[46px] px-4 py-2.5 rounded-btn bg-brand hover:bg-brand-dark disabled:opacity-50 text-white font-extrabold text-sm transition"
                           >
@@ -649,6 +723,8 @@ export function BaristaBoard({
         )}
       </main>
 
+      {stopListOpen && <StopListModal onClose={() => setStopListOpen(false)} />}
+
       {cancellingOrder && (
         <CancelOrderModal
           orderNumber={cancellingOrder.number}
@@ -666,4 +742,23 @@ export function BaristaBoard({
       )}
     </div>
   );
+}
+
+/** Заказ дороже порога ещё не подтверждён звонком гостю. */
+function needsCallConfirmation(order: StaffOrderDto): boolean {
+  return order.status === 'new' && order.requiresCall && !order.callConfirmedAt;
+}
+
+/** «через 7 мин», «через 1 ч 05 мин», «сейчас», «просрочен на 4 мин» */
+function formatMinutesLeft(minutes: number): string {
+  if (minutes < 0) return `просрочен на ${formatDuration(-minutes)}`;
+  if (minutes === 0) return 'сейчас';
+  return `через ${formatDuration(minutes)}`;
+}
+
+function formatDuration(minutes: number): string {
+  if (minutes < 60) return `${minutes} мин`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m === 0 ? `${h} ч` : `${h} ч ${String(m).padStart(2, '0')} мин`;
 }

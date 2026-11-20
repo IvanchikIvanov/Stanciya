@@ -1,3 +1,4 @@
+import './setup-env';
 import { describe, it, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { loginStaff, loginClient, registerClient } from '../src/core/auth/service';

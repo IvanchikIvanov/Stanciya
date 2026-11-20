@@ -6,41 +6,53 @@ interface ProductPlaceholderProps {
   className?: string;
 }
 
+/**
+ * Фирменные стаканы из макета лендинга. Показываются, пока администратор
+ * не загрузил фото товара (загруженное фото всегда важнее).
+ */
+const FOOD_RE = /круассан|сэндвич|сендвич|бутерброд|булоч|печень|пирож|торт|десерт|салат|шоколад(?!ный напиток)|сырник|кекс|маффин|вафл/;
+
+function brandCupFor(name: string): string | null {
+  const n = name.toLowerCase();
+  if (FOOD_RE.test(n)) return null; // для еды стакан не показываем
+
+  if (/латте|флэт|флет|матча|какао|молок/.test(n)) return '/brand/glass-latte.jpg';
+  if (/американо|эспрессо|чёрн|черн|фильтр|чай/.test(n)) return '/brand/cup-americano.jpg';
+  return '/brand/cup-cappuccino.jpg';
+}
+
 export function ProductPlaceholder({
   name,
   imageUrl,
   className = 'w-full h-36',
 }: ProductPlaceholderProps) {
-  if (imageUrl) {
+  const src = imageUrl || brandCupFor(name);
+  const isBrandCup = !imageUrl;
+
+  if (!src) {
     return (
-      <div className={`relative overflow-hidden bg-brand-light ${className}`}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={imageUrl}
-          alt={name}
-          className="w-full h-full object-cover"
-          loading="lazy"
-        />
+      <div
+        className={`relative overflow-hidden bg-[#F3F1EC] flex flex-col items-center justify-center gap-2 text-brand select-none ${className}`}
+      >
+        <svg viewBox="0 0 24 24" className="w-1/4 max-w-[56px] min-w-[20px] h-auto" fill="currentColor" aria-hidden="true">
+          <path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z" />
+        </svg>
+        <span className="sr-only">{name}</span>
       </div>
     );
   }
 
   return (
     <div
-      className={`relative overflow-hidden bg-gradient-to-br from-brand-light via-blue-100 to-brand-muted flex flex-col items-center justify-center p-3 text-center select-none ${className}`}
+      className={`relative overflow-hidden bg-[#F3F1EC] flex items-center justify-center ${className}`}
     >
-      <div className="w-12 h-12 rounded-2xl bg-white/85 text-brand flex items-center justify-center shadow-sm mb-1.5">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-6 h-6">
-          <path d="M17 8h1a4 4 0 1 1 0 8h-1" />
-          <path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z" />
-          <line x1="6" y1="2" x2="6" y2="4" />
-          <line x1="10" y1="2" x2="10" y2="4" />
-          <line x1="14" y1="2" x2="14" y2="4" />
-        </svg>
-      </div>
-      <span className="text-[11px] font-bold text-brand-deep/75 tracking-wide uppercase">
-        СТАНЦИЯ
-      </span>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt={name}
+        loading="lazy"
+        className={isBrandCup ? 'h-full w-auto object-contain mix-blend-multiply' : 'w-full h-full object-cover'}
+      />
     </div>
   );
 }

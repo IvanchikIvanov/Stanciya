@@ -2,59 +2,45 @@ import React from 'react';
 import Link from 'next/link';
 
 interface LogoProps {
+  /** light — для тёмного или синего фона (белые буквы), dark — для светлого фона */
   variant?: 'light' | 'dark';
   href?: string;
   subtitle?: string;
+  size?: 'sm' | 'md' | 'lg';
 }
 
-export function Logo({ variant = 'light', href = '/', subtitle }: LogoProps) {
+const HEIGHTS: Record<NonNullable<LogoProps['size']>, string> = {
+  sm: 'h-6',
+  md: 'h-7',
+  lg: 'h-8 sm:h-9',
+};
+
+export function Logo({ variant = 'dark', href = '/', subtitle, size = 'md' }: LogoProps) {
   const isLight = variant === 'light';
   const content = (
-    <span className="inline-flex items-center gap-2.5 select-none">
-      <span
-        className={`inline-flex items-center justify-center w-9 h-9 rounded-xl font-bold shadow-sm ${
-          isLight
-            ? 'bg-brand-accent text-brand-deep'
-            : 'bg-brand text-white'
-        }`}
-        aria-hidden="true"
-      >
-        <svg
-          viewBox="0 0 24 24"
-          fill="currentColor"
-          className="w-5 h-5"
-        >
-          <path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z" />
-        </svg>
-      </span>
-      <span className="flex flex-col leading-none">
+    <span className="inline-flex items-center gap-3 select-none">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={isLight ? '/brand/logo-white.png' : '/brand/logo.png'}
+        alt="СТАНЦИЯ"
+        className={`${HEIGHTS[size]} w-auto`}
+      />
+      {subtitle && (
         <span
-          className={`text-lg font-extrabold tracking-wider uppercase ${
-            isLight ? 'text-white' : 'text-slate-900'
+          className={`hidden sm:inline-block pl-3 border-l text-xs font-semibold leading-tight ${
+            isLight ? 'border-white/30 text-white/80' : 'border-slate-300 text-slate-500'
           }`}
         >
-          СТАНЦИЯ
+          {subtitle}
         </span>
-        {subtitle && (
-          <span
-            className={`text-[11px] font-medium mt-0.5 ${
-              isLight ? 'text-blue-100' : 'text-slate-500'
-            }`}
-          >
-            {subtitle}
-          </span>
-        )}
-      </span>
+      )}
     </span>
   );
 
   if (!href) return content;
 
   return (
-    <Link
-      href={href}
-      className="focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-accent rounded-xl"
-    >
+    <Link href={href} className="rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-brand">
       {content}
     </Link>
   );

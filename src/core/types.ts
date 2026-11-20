@@ -52,6 +52,26 @@ export interface PromoServiceBlock {
   isExternal: boolean;
 }
 
+export interface SettingDefinition {
+  /** Уникальный ключ: «<модуль>.<имя>», например coffee.maxActiveOrdersPerPhone */
+  key: string;
+  moduleId: string;
+  /** Название группы в разделе «Настройки» */
+  group: string;
+  label: string;
+  hint?: string;
+  type: 'integer' | 'url';
+  defaultValue: number | string;
+  min?: number;
+  max?: number;
+  /** Подпись единицы измерения рядом с полем, например «₽» */
+  unit?: string;
+}
+
+export interface SettingValue extends SettingDefinition {
+  value: number | string;
+}
+
 export interface PlatformModule {
   id: string;
   title: string;
@@ -60,4 +80,6 @@ export interface PlatformModule {
   homeBlock: ModuleHomeBlock;
   getStatsBlock?: (params: StatsFilterParams) => Promise<ModuleStatsBlockData>;
   attachGuestOrderToUser?: (accessKey: string, userId: number) => Promise<void>;
+  /** Настройки модуля, которые администратор меняет в разделе «Настройки» */
+  settings?: SettingDefinition[];
 }

@@ -28,6 +28,12 @@ export default function OrderStatusPage() {
   const [pollOffline, setPollOffline] = useState(false);
 
   const [confirmCancel, setConfirmCancel] = useState(false);
+  // Итог создания профиля при оформлении (?profile=created|failed)
+  const [profileResult, setProfileResult] = useState<'created' | 'failed' | null>(null);
+  useEffect(() => {
+    const v = new URLSearchParams(window.location.search).get('profile');
+    if (v === 'created' || v === 'failed') setProfileResult(v);
+  }, []);
   const [cancelling, setCancelling] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
 
@@ -134,12 +140,12 @@ export default function OrderStatusPage() {
         customMessage="Нет связи с сервером. Показан последний известный статус заказа."
       />
 
-      <header className="bg-brand text-white shadow-sm">
+      <header className="bg-white/90 backdrop-blur border-b border-slate-200/80 sticky top-0 z-30">
         <div className="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between">
-          <Logo variant="light" subtitle="Статус заказа" />
+          <Logo variant="dark" subtitle="Статус заказа" />
           <Link
             href="/"
-            className="px-3.5 py-2 rounded-btn bg-white/15 hover:bg-white/25 text-xs sm:text-sm font-bold transition"
+            className="px-3.5 py-2 rounded-btn border border-slate-300 bg-white text-slate-800 hover:border-brand hover:text-brand text-xs sm:text-sm font-bold transition"
           >
             В каталог
           </Link>
@@ -283,6 +289,13 @@ export default function OrderStatusPage() {
                 </div>
               </div>
 
+              {order.status === 'new' && order.requiresCall && (
+                <div className="p-3 rounded-card bg-amber-50 border border-amber-200 text-sm font-semibold text-amber-950">
+                  📞 Для заказа на эту сумму сотрудник позвонит вам по номеру{' '}
+                  {order.customerPhone}, чтобы подтвердить заказ. Готовить начнём после звонка.
+                </div>
+              )}
+
               {/* Действия по статусу */}
               {order.status === 'new' && (
                 <div className="pt-2 border-t border-slate-100">
@@ -378,31 +391,18 @@ export default function OrderStatusPage() {
               </div>
             </section>
 
-            {/* Необязательное предложение гостю сохранить данные */}
-            {!user && !order.isLinkedToProfile && (
-              <section className="bg-gradient-to-r from-brand-light to-blue-100 rounded-panel p-5 border border-blue-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                  <h3 className="font-extrabold text-slate-900 text-sm sm:text-base">
-                    Сохранить данные для следующих заказов?
-                  </h3>
-                  <p className="text-xs text-slate-600 mt-0.5">
-                    Создайте профиль за 15 секунд — имя, телефон и этот заказ сохранятся в вашей истории.
-                  </p>
-                </div>
-                <Link
-                  href={`/register?name=${encodeURIComponent(
-                    order.customerName
-                  )}&phone=${encodeURIComponent(
-                    order.customerPhone
-                  )}&orderKey=${encodeURIComponent(
-                    order.accessKey
-                  )}&returnTo=${encodeURIComponent(`/order/${order.accessKey}`)}`}
-                  className="px-5 py-2.5 rounded-btn bg-brand hover:bg-brand-dark text-white font-bold text-xs sm:text-sm shrink-0 text-center transition"
-                >
-                  Сохранить данные
-                </Link>
-              </section>
+            {profileResult === 'created' && user && (
+              <div role="status" className="p-4 rounded-card bg-emerald-50 border border-emerald-200 text-sm font-semibold text-emerald-900">
+                Профиль создан, заказ сохранён в истории. В следующий раз имя и телефон подставятся сами.
+              </div>
             )}
+            {profileResult === 'failed' && !user && (
+              <div role="status" className="p-4 rounded-card bg-amber-50 border border-amber-200 text-sm font-semibold text-amber-950">
+                Заказ оформлен, но профиль создать не удалось — возможно, этот номер уже зарегистрирован.{' '}
+                <Link href="/login" className="underline text-brand">Войти</Link>
+              </div>
+            )}
+
           </>
         )}
       </main>

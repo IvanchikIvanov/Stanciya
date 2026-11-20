@@ -1,4 +1,5 @@
 import { query } from '@/core/db';
+import { getStoppedProductIds } from '../stoplist/service';
 
 export interface ModifierOptionDto {
   id: number;
@@ -205,7 +206,10 @@ export interface CartCheckItemResult {
   }>;
 }
 
-export async function verifyCartItems(items: CartCheckItemInput[]): Promise<{
+export async function verifyCartItems(
+  items: CartCheckItemInput[],
+  pointId?: number | null
+): Promise<{
   items: CartCheckItemResult[];
   total: number;
   hasUnavailable: boolean;
@@ -213,6 +217,7 @@ export async function verifyCartItems(items: CartCheckItemInput[]): Promise<{
 }> {
   const { products } = await getPublicCatalog();
   const prodMap = new Map(products.map((p) => [p.id, p]));
+  const stopped = pointId ? await getStoppedProductIds(pointId) : new Set<number>();
 
   const results: CartCheckItemResult[] = [];
   let total = 0;
@@ -221,7 +226,7 @@ export async function verifyCartItems(items: CartCheckItemInput[]): Promise<{
 
   for (const item of items) {
     const prod = prodMap.get(item.productId);
-    if (!prod || !prod.isPublished || !prod.inStock) {
+    if (!prod || !prod.isPublished || !prod.inStock || stopped.has(prod.id)) {
       hasUnavailable = true;
       results.push({
         productId: item.productId,
@@ -229,7 +234,8 @@ export async function verifyCartItems(items: CartCheckItemInput[]): Promise<{
         quantity: item.quantity,
         productName: prod?.name ?? 'Товар недоступен',
         available: false,
-        unavailableReason: 'Нет в наличии',
+        unavailableReason:
+          prod && stopped.has(prod.id) ? 'Нет на выбранной точке' : 'Нет в наличии',
         unitPrice: prod?.basePrice ?? item.clientUnitPrice ?? 0,
         lineTotal: 0,
         priceChanged: false,

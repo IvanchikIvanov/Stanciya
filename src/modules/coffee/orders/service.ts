@@ -2,10 +2,12 @@ import crypto from 'node:crypto';
 import type { SessionUser } from '@/core/auth/session';
 import { query, transaction } from '@/core/db';
 import { getConfig } from '@/core/env';
+import { getIntegerSetting } from '@/core/settings/service';
 import { AppError } from '@/core/errors';
 import { requireNormalizedPhone } from '@/core/phone';
 import { getPointById } from '@/core/points/service';
 import { formatMiassTime, getMiassDayBounds } from '@/core/time';
+import { COFFEE_SETTING_KEYS } from '../settings/definitions';
 
 export type OrderStatus =
   | 'new'
@@ -63,6 +65,8 @@ export interface GuestOrderDto {
   isAsap: boolean;
   pickupTimeAdjusted: boolean;
   total: number;
+  /** Заказ дороже порога: сотрудник звонит гостю перед принятием */
+  requiresCall: boolean;
   status: OrderStatus;
   statusLabel: string;
   cancelReasonLabel: string | null;
@@ -99,6 +103,8 @@ export interface StaffOrderDto {
   isAsap: boolean;
   pickupTimeAdjusted: boolean;
   total: number;
+  requiresCall: boolean;
+  callConfirmedAt: string | null;
   status: OrderStatus;
   statusLabel: string;
   noShowCount: number;
@@ -287,7 +293,14 @@ export async function createCoffeeOrder(
     selectedPickupIso = matchingSlot.iso;
   }
 
-  const cfg = getConfig();
+  const maxActiveOrdersPerPhone = await getIntegerSetting(
+    COFFEE_SETTING_KEYS.maxActiveOrdersPerPhone,
+    0
+  );
+  const callConfirmThreshold = await getIntegerSetting(
+    COFFEE_SETTING_KEYS.callConfirmThreshold,
+    1000
+  );
 
   const accessKey = await transaction(async (tx) => {
     const dupCheck = await tx.query<{ access_key: string }>(
@@ -298,8 +311,9 @@ export async function createCoffeeOrder(
       return dupCheck.rows[0].access_key;
     }
 
-    // Проверка лимита активных заказов на номер телефона (п. 5.2 и раздел 16)
-    if (cfg.maxActiveOrdersPerPhone > 0) {
+    // Лимит одновременных заказов на номер телефона: по умолчанию не ограничен,
+    // меняется в админке (п. 4.4 ТЗ)
+    if (maxActiveOrdersPerPhone > 0) {
       const activeRes = await tx.query<{ cnt: string }>(
         `SELECT COUNT(*)::text AS cnt
          FROM coffee_orders
@@ -308,11 +322,13 @@ export async function createCoffeeOrder(
         [customerPhone]
       );
       const activeCount = Number(activeRes.rows[0]?.cnt ?? 0);
-      if (activeCount >= cfg.maxActiveOrdersPerPhone) {
+      if (activeCount >= maxActiveOrdersPerPhone) {
         throw new AppError(
           409,
           'ACTIVE_ORDERS_LIMIT',
-          'У вас уже есть два активных заказа'
+          maxActiveOrdersPerPhone === 1
+            ? 'У вас уже есть активный заказ. Дождитесь выдачи или отмените его'
+            : `На этот номер уже оформлено ${activeCount} активных заказа — это максимум. Дождитесь выдачи или отмените один из них`
         );
       }
     }
@@ -328,6 +344,12 @@ export async function createCoffeeOrder(
     }> = [];
 
     let orderTotal = 0;
+
+    const stoppedAtPoint = await tx.query<{ product_id: number }>(
+      'SELECT product_id FROM coffee_point_stop_list WHERE point_id = $1',
+      [point.id]
+    );
+    const stoppedIds = new Set(stoppedAtPoint.rows.map((r) => r.product_id));
 
     for (const item of input.items) {
       const prodRes = await tx.query<{
@@ -356,7 +378,8 @@ export async function createCoffeeOrder(
         prod.deleted_at !== null ||
         !prod.is_published ||
         !prod.in_stock ||
-        !prod.cat_published
+        !prod.cat_published ||
+        stoppedIds.has(prod.id)
       ) {
         throw new AppError(
           409,
@@ -483,9 +506,9 @@ export async function createCoffeeOrder(
       `INSERT INTO coffee_orders (
          access_key, idempotency_key, point_id, user_id,
          customer_name, customer_phone, comment,
-         pickup_at, is_asap, pickup_time_adjusted, total, status
+         pickup_at, is_asap, pickup_time_adjusted, total, requires_call, status
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, FALSE, $10, 'new')
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, FALSE, $10, $11, 'new')
        RETURNING id`,
       [
         generatedAccessKey,
@@ -498,6 +521,7 @@ export async function createCoffeeOrder(
         selectedPickupIso,
         input.isAsap,
         orderTotal,
+        callConfirmThreshold > 0 && orderTotal > callConfirmThreshold,
       ]
     );
 
@@ -597,6 +621,8 @@ export async function getOrderByAccessKeyForGuest(
     pickup_at: string;
     is_asap: boolean;
     pickup_time_adjusted: boolean;
+    requires_call?: boolean;
+    call_confirmed_at?: string | null;
     total: number;
     status: OrderStatus;
     created_at: string;
@@ -604,7 +630,7 @@ export async function getOrderByAccessKeyForGuest(
     `SELECT o.id, o.number, o.access_key, o.point_id,
             p.name AS point_name, p.address AS point_address, p.phone AS point_phone,
             o.user_id, o.customer_name, o.customer_phone, o.comment,
-            o.pickup_at, o.is_asap, o.pickup_time_adjusted, o.total, o.status, o.created_at
+            o.pickup_at, o.is_asap, o.pickup_time_adjusted, o.total, o.requires_call, o.call_confirmed_at, o.status, o.created_at
      FROM coffee_orders o
      JOIN points p ON p.id = o.point_id
      WHERE o.access_key = $1`,
@@ -652,6 +678,7 @@ export async function getOrderByAccessKeyForGuest(
     isAsap: row.is_asap,
     pickupTimeAdjusted: row.pickup_time_adjusted,
     total: row.total,
+    requiresCall: Boolean(row.requires_call),
     status: row.status,
     statusLabel: ORDER_STATUS_LABELS[row.status],
     cancelReasonLabel,
@@ -715,6 +742,8 @@ export interface StaffTransitionInput {
   shiftMinutes?: 0 | 5 | 10 | 15;
   cancelReason?: string;
   cancelComment?: string;
+  /** Сотрудник отметил «Звонок сделан» при принятии заказа, требующего звонка */
+  callConfirmed?: boolean;
 }
 
 export async function transitionOrderStatusByStaff(
@@ -731,8 +760,11 @@ export async function transitionOrderStatusByStaff(
       point_id: number;
       status: OrderStatus;
       pickup_at: string;
+      total: number;
+      requires_call: boolean;
+      call_confirmed_at: string | null;
     }>(
-      'SELECT id, point_id, status, pickup_at FROM coffee_orders WHERE id = $1',
+      'SELECT id, point_id, status, pickup_at, total, requires_call, call_confirmed_at FROM coffee_orders WHERE id = $1',
       [input.orderId]
     );
 
@@ -782,6 +814,17 @@ export async function transitionOrderStatusByStaff(
       }
     }
 
+    // Крупный заказ принимается только после звонка гостю (п. 4.4 ТЗ)
+    const confirmsCallNow =
+      from === 'new' && to === 'accepted' && order.requires_call && !order.call_confirmed_at;
+    if (confirmsCallNow && input.callConfirmed !== true) {
+      throw new AppError(
+        409,
+        'CALL_CONFIRMATION_REQUIRED',
+        `Заказ на ${order.total} ₽: позвоните гостю и отметьте «Звонок сделан», затем примите заказ`
+      );
+    }
+
     let newPickupAt = new Date(order.pickup_at).toISOString();
     let adjustedFlag: boolean | null = null;
 
@@ -799,9 +842,11 @@ export async function transitionOrderStatusByStaff(
       `UPDATE coffee_orders
        SET status = $1,
            pickup_at = $2,
-           pickup_time_adjusted = COALESCE($3, pickup_time_adjusted)
+           pickup_time_adjusted = COALESCE($3, pickup_time_adjusted),
+           call_confirmed_at = CASE WHEN $6::boolean THEN NOW() ELSE call_confirmed_at END,
+           call_confirmed_by = CASE WHEN $6::boolean THEN $7::integer ELSE call_confirmed_by END
        WHERE id = $4 AND status = $5`,
-      [to, newPickupAt, adjustedFlag, order.id, from]
+      [to, newPickupAt, adjustedFlag, order.id, from, confirmsCallNow, actor.id]
     );
 
     if (upd.rowCount === 0) {
@@ -852,6 +897,8 @@ async function hydrateStaffOrders(
     pickup_at: string;
     is_asap: boolean;
     pickup_time_adjusted: boolean;
+    requires_call?: boolean;
+    call_confirmed_at?: string | null;
     total: number;
     status: OrderStatus;
     created_at: string;
@@ -946,6 +993,8 @@ async function hydrateStaffOrders(
     isAsap: r.is_asap,
     pickupTimeAdjusted: r.pickup_time_adjusted,
     total: r.total,
+    requiresCall: Boolean(r.requires_call),
+    callConfirmedAt: r.call_confirmed_at ? new Date(r.call_confirmed_at).toISOString() : null,
     status: r.status,
     statusLabel: ORDER_STATUS_LABELS[r.status],
     noShowCount: noShowByPhone.get(r.customer_phone) ?? 0,
@@ -977,6 +1026,8 @@ export async function getStaffOrderById(
     pickup_at: string;
     is_asap: boolean;
     pickup_time_adjusted: boolean;
+    requires_call?: boolean;
+    call_confirmed_at?: string | null;
     total: number;
     status: OrderStatus;
     created_at: string;
@@ -984,7 +1035,7 @@ export async function getStaffOrderById(
     `SELECT o.id, o.number, o.access_key, o.point_id,
             p.name AS point_name, p.address AS point_address,
             o.customer_name, o.customer_phone, o.comment,
-            o.pickup_at, o.is_asap, o.pickup_time_adjusted, o.total, o.status, o.created_at
+            o.pickup_at, o.is_asap, o.pickup_time_adjusted, o.total, o.requires_call, o.call_confirmed_at, o.status, o.created_at
      FROM coffee_orders o
      JOIN points p ON p.id = o.point_id
      WHERE o.id = $1`,
@@ -1048,6 +1099,8 @@ export async function listBaristaQueue(
     pickup_at: string;
     is_asap: boolean;
     pickup_time_adjusted: boolean;
+    requires_call?: boolean;
+    call_confirmed_at?: string | null;
     total: number;
     status: OrderStatus;
     created_at: string;
@@ -1055,7 +1108,7 @@ export async function listBaristaQueue(
     `SELECT o.id, o.number, o.access_key, o.point_id,
             p.name AS point_name, p.address AS point_address,
             o.customer_name, o.customer_phone, o.comment,
-            o.pickup_at, o.is_asap, o.pickup_time_adjusted, o.total, o.status, o.created_at
+            o.pickup_at, o.is_asap, o.pickup_time_adjusted, o.total, o.requires_call, o.call_confirmed_at, o.status, o.created_at
      FROM coffee_orders o
      JOIN points p ON p.id = o.point_id
      WHERE o.point_id = $1
@@ -1077,6 +1130,8 @@ export async function listBaristaQueue(
     pickup_at: string;
     is_asap: boolean;
     pickup_time_adjusted: boolean;
+    requires_call?: boolean;
+    call_confirmed_at?: string | null;
     total: number;
     status: OrderStatus;
     created_at: string;
@@ -1084,7 +1139,7 @@ export async function listBaristaQueue(
     `SELECT o.id, o.number, o.access_key, o.point_id,
             p.name AS point_name, p.address AS point_address,
             o.customer_name, o.customer_phone, o.comment,
-            o.pickup_at, o.is_asap, o.pickup_time_adjusted, o.total, o.status, o.created_at
+            o.pickup_at, o.is_asap, o.pickup_time_adjusted, o.total, o.requires_call, o.call_confirmed_at, o.status, o.created_at
      FROM coffee_orders o
      JOIN points p ON p.id = o.point_id
      WHERE o.point_id = $1
@@ -1133,6 +1188,8 @@ export async function listClientOrders(userId: number): Promise<GuestOrderDto[]>
     pickup_at: string;
     is_asap: boolean;
     pickup_time_adjusted: boolean;
+    requires_call?: boolean;
+    call_confirmed_at?: string | null;
     total: number;
     status: OrderStatus;
     created_at: string;
@@ -1140,7 +1197,7 @@ export async function listClientOrders(userId: number): Promise<GuestOrderDto[]>
     `SELECT o.id, o.number, o.access_key, o.point_id,
             p.name AS point_name, p.address AS point_address, p.phone AS point_phone,
             o.user_id, o.customer_name, o.customer_phone, o.comment,
-            o.pickup_at, o.is_asap, o.pickup_time_adjusted, o.total, o.status, o.created_at
+            o.pickup_at, o.is_asap, o.pickup_time_adjusted, o.total, o.requires_call, o.call_confirmed_at, o.status, o.created_at
      FROM coffee_orders o
      JOIN points p ON p.id = o.point_id
      WHERE o.user_id = $1
@@ -1168,6 +1225,7 @@ export async function listClientOrders(userId: number): Promise<GuestOrderDto[]>
     isAsap: row.is_asap,
     pickupTimeAdjusted: row.pickup_time_adjusted,
     total: row.total,
+    requiresCall: Boolean(row.requires_call),
     status: row.status,
     statusLabel: ORDER_STATUS_LABELS[row.status],
     cancelReasonLabel: null,
@@ -1285,6 +1343,8 @@ export async function listAdminOrders(
     pickup_at: string;
     is_asap: boolean;
     pickup_time_adjusted: boolean;
+    requires_call?: boolean;
+    call_confirmed_at?: string | null;
     total: number;
     status: OrderStatus;
     created_at: string;
@@ -1292,7 +1352,7 @@ export async function listAdminOrders(
     `SELECT o.id, o.number, o.access_key, o.point_id,
             p.name AS point_name, p.address AS point_address,
             o.customer_name, o.customer_phone, o.comment,
-            o.pickup_at, o.is_asap, o.pickup_time_adjusted, o.total, o.status, o.created_at
+            o.pickup_at, o.is_asap, o.pickup_time_adjusted, o.total, o.requires_call, o.call_confirmed_at, o.status, o.created_at
      FROM coffee_orders o
      JOIN points p ON p.id = o.point_id
      ${whereSql}

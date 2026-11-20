@@ -40,6 +40,10 @@ npm run dev
 ```powershell
 npm test
 ```
+Тесты работают с отдельной базой в памяти (`tests/setup-env.ts`) и не трогают рабочую базу `./.pglite`.
+
+Лимит одновременных заказов на номер телефона, порог суммы для звонка гостю и ссылки промоблоков
+задаются не в `.env`, а в админ-панели, раздел «Настройки» (`/admin/settings`).
 
 Проверка продакшен-сборки:
 ```powershell
@@ -54,8 +58,7 @@ npm run build
 |---|---|---|
 | `DATABASE_URL` | Строка подключения PostgreSQL (`postgres://...` или `postgresql://...`). Если пусто — локальный PGlite (`./.pglite`) | пусто (PGlite) |
 | `UPLOAD_DIR` | Каталог на диске для хранения загруженных фотографий товаров | `./uploads` |
-| `MAX_ACTIVE_ORDERS_PER_PHONE` | Лимит активных заказов на один номер телефона (`0` — отключить лимит) | `2` |
-| `ENABLE_NO_SHOW_COUNTER` | Показывать ли сотрудникам счётчик «Не забрал заказов: N» (`true` / `false`) | `true` |
+| `ENABLE_NO_SHOW_COUNTER` | Показывать ли сотрудникам метку «Не забрал заказов: N» (`true` / `false`); заказчик решил её не показывать | `false` |
 | `SEED_ADMIN_LOGIN` | Логин администратора при выполнении `npm run seed` | задаётся в `.env` |
 | `SEED_ADMIN_PASSWORD` | Пароль администратора при выполнении `npm run seed` | задаётся в `.env` |
 | `SEED_BARISTA1_LOGIN` | Логин бариста первой точки при выполнении `npm run seed` | задаётся в `.env` |
@@ -80,8 +83,7 @@ CREATE DATABASE stanciya_prod OWNER stanciya_user;
    NODE_ENV=production
    DATABASE_URL=postgresql://stanciya_user:STRONG_DB_PASSWORD@127.0.0.1:5432/stanciya_prod
    UPLOAD_DIR=/var/lib/stanciya/uploads
-   MAX_ACTIVE_ORDERS_PER_PHONE=2
-   ENABLE_NO_SHOW_COUNTER=true
+   ENABLE_NO_SHOW_COUNTER=false
    ```
 2. Выполните установку, миграции, сиды и сборку:
    ```bash

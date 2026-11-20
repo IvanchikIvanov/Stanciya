@@ -38,22 +38,16 @@ loadEnvIfNeeded();
 
 export function getConfig() {
   loadEnvIfNeeded();
-  const maxActiveRaw = process.env.MAX_ACTIVE_ORDERS_PER_PHONE;
-  const maxActiveOrdersPerPhone =
-    maxActiveRaw !== undefined && maxActiveRaw !== ''
-      ? Number(maxActiveRaw)
-      : 2;
-
   const enableNoShowRaw = process.env.ENABLE_NO_SHOW_COUNTER;
+  // Метку «Не забрал заказов» заказчик решил не показывать: по умолчанию выключена
   const enableNoShowCounter =
     enableNoShowRaw === undefined || enableNoShowRaw === ''
-      ? true
-      : enableNoShowRaw.toLowerCase() !== 'false' && enableNoShowRaw !== '0';
+      ? false
+      : enableNoShowRaw.toLowerCase() === 'true' || enableNoShowRaw === '1';
 
   return {
     databaseUrl: process.env.DATABASE_URL ?? '',
     uploadDir: process.env.UPLOAD_DIR || './uploads',
-    maxActiveOrdersPerPhone: Number.isNaN(maxActiveOrdersPerPhone) ? 2 : maxActiveOrdersPerPhone,
     enableNoShowCounter,
   };
 }

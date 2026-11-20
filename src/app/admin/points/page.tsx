@@ -27,7 +27,7 @@ export default function AdminPointsPage() {
   const [address, setAddress] = useState('');
   const [phone, setPhone] = useState('+7');
   const [prepMinutes, setPrepMinutes] = useState(10);
-  const [slotStepMinutes, setSlotStepMinutes] = useState(10);
+  const [slotStepMinutes, setSlotStepMinutes] = useState(5);
   const [acceptsOrders, setAcceptsOrders] = useState(true);
   const [isHidden, setIsHidden] = useState(false);
   const [hours, setHours] = useState<PointHourDto[]>([]);
@@ -61,7 +61,7 @@ export default function AdminPointsPage() {
     setAddress('г. Миасс, ');
     setPhone('+79000000000');
     setPrepMinutes(10);
-    setSlotStepMinutes(10);
+    setSlotStepMinutes(5);
     setAcceptsOrders(true);
     setIsHidden(false);
     setHours(

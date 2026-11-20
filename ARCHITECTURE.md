@@ -106,6 +106,8 @@ export const evModule: PlatformModule = {
 };
 ```
 
+Если модулю нужны настройки, которые меняет администратор, опишите их в поле `settings` (массив `SettingDefinition` с ключами вида `ev.<имя>`). Раздел «Настройки» (`/admin/settings`) покажет их автоматически, а значения читаются через `getIntegerSetting` / `getSetting` из `src/core/settings/service.ts` (таблица ядра `platform_settings`).
+
 ### Шаг 3. Зарегистрируйте модуль в `src/modules/index.ts`
 Добавьте `registerModule(evModule)` в `src/modules/index.ts`. После этого:
 - В шапке админ-панели автоматически появится пункт меню **«ЭЗС и коннекторы»**;
@@ -113,7 +115,7 @@ export const evModule: PlatformModule = {
 
 ### Шаг 4. Добавьте маршруты Next.js и замените промо-ссылку
 1. Создайте API-маршруты в `src/app/api/ev/...` и страницы в `src/app/ev/...` и `src/app/admin/ev/...`.
-2. В `PROMO_SERVICE_BLOCKS` (`src/core/modules.ts`) замените внешнюю ссылку промоблока `ev-charge` на внутренний маршрут `/ev` (`isExternal: false`).
+2. Ссылка промоблока `ev-charge` задаётся в админке («Настройки», ключ `core.promo.ev-charge.href`); для перехода внутрь платформы укажите в `PROMO_SERVICE_BLOCKS` (`src/core/modules.ts`) `isExternal: false` и внутренний адрес `/ev`.
 3. Привяжите сервис `'ev_charge'` к нужным точкам в таблице `point_services`.
 
 При этом ни одна строка кода модуля `src/modules/coffee/` не затрагивается.

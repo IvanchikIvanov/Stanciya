@@ -128,6 +128,37 @@ export function setSelectedPointIdInStorage(pointId: number | null): void {
   }
 }
 
+const PICKUP_STORAGE_KEY = 'stanciya_pickup_choice_v1';
+
+/** Время получения, выбранное на главной: «как можно скорее» или слот ЧЧ:ММ. */
+export interface PickupChoice {
+  isAsap: boolean;
+  time: string | null;
+}
+
+export function getPickupChoiceFromStorage(): PickupChoice | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.sessionStorage.getItem(PICKUP_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (typeof parsed?.isAsap !== 'boolean') return null;
+    return { isAsap: parsed.isAsap, time: typeof parsed.time === 'string' ? parsed.time : null };
+  } catch {
+    return null;
+  }
+}
+
+export function setPickupChoiceInStorage(choice: PickupChoice | null): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (choice === null) window.sessionStorage.removeItem(PICKUP_STORAGE_KEY);
+    else window.sessionStorage.setItem(PICKUP_STORAGE_KEY, JSON.stringify(choice));
+  } catch {
+    // хранилище недоступно (приватный режим) — выбор просто не переносится
+  }
+}
+
 export function useCart() {
   const [items, setItems] = useState<CartLineItem[]>([]);
   const [hydrated, setHydrated] = useState(false);

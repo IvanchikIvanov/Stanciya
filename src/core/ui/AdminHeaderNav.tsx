@@ -20,17 +20,18 @@ export function AdminHeaderNav({ navItems, userName }: AdminHeaderNavProps) {
   }
 
   return (
-    <header className="bg-brand-deep text-white shadow-md">
+    <header className="bg-brand-ink text-white shadow-md">
       <div className="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-4">
         <div className="flex flex-wrap items-center gap-5">
           <Link
             href="/admin/orders"
             className="font-extrabold text-base sm:text-lg tracking-wider flex items-center gap-2"
           >
-            <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-brand-accent text-brand-deep text-sm font-black">
-              ⚡
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/brand/logo-white.png" alt="СТАНЦИЯ" className="h-6 w-auto" />
+            <span className="px-2 py-0.5 rounded-md bg-brand text-[11px] font-extrabold tracking-wider uppercase">
+              Админ
             </span>
-            <span>СТАНЦИЯ · АДМИН</span>
           </Link>
 
           <nav className="flex flex-wrap items-center gap-1" aria-label="Меню администратора">
@@ -43,7 +44,7 @@ export function AdminHeaderNav({ navItems, userName }: AdminHeaderNavProps) {
                   className={`px-3.5 py-2 rounded-lg text-sm font-bold transition ${
                     active
                       ? 'bg-brand text-white shadow-xs'
-                      : 'text-blue-100 hover:bg-white/15 hover:text-white'
+                      : 'text-white/75 hover:bg-white/10 hover:text-white'
                   }`}
                 >
                   {item.label}
@@ -54,7 +55,7 @@ export function AdminHeaderNav({ navItems, userName }: AdminHeaderNavProps) {
         </div>
 
         <div className="flex items-center gap-2.5 text-xs">
-          <span className="text-blue-200 font-semibold hidden sm:inline">
+          <span className="text-white/60 font-semibold hidden sm:inline">
             {userName}
           </span>
           <Link

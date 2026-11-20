@@ -27,6 +27,7 @@ const schema = z.object({
   shiftMinutes: z.union([z.literal(0), z.literal(5), z.literal(10), z.literal(15)]).optional(),
   cancelReason: z.string().optional(),
   cancelComment: z.string().optional(),
+  callConfirmed: z.boolean().optional(),
 });
 
 export async function POST(
@@ -47,6 +48,7 @@ export async function POST(
         shiftMinutes: parsed.shiftMinutes,
         cancelReason: parsed.cancelReason,
         cancelComment: parsed.cancelComment,
+        callConfirmed: parsed.callConfirmed,
       },
       user
     );

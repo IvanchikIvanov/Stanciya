@@ -25,6 +25,7 @@ const CORE_ADMIN_NAV: AdminNavItem[] = [
   { id: 'core-points', label: 'Точки', href: '/admin/points', moduleId: 'core', order: 30 },
   { id: 'core-staff', label: 'Сотрудники', href: '/admin/staff', moduleId: 'core', order: 40 },
   { id: 'core-stats', label: 'Показатели', href: '/admin/stats', moduleId: 'core', order: 60 },
+  { id: 'core-settings', label: 'Настройки', href: '/admin/settings', moduleId: 'core', order: 70 },
 ];
 
 export function getAdminNavigation(): AdminNavItem[] {
@@ -62,13 +63,14 @@ export async function attachGuestOrderAcrossModules(
   }
 }
 
+// Ссылки промоблоков задаёт администратор в разделе «Настройки» (core.promo.<id>.href).
 export const PROMO_SERVICE_BLOCKS: PromoServiceBlock[] = [
   {
     id: 'ev-charge',
     title: 'Зарядка автомобиля',
     description: 'Быстрые ЭЗС на точках «СТАНЦИЯ» в Миассе — заряжайтесь пока пьёте кофе',
     imageType: 'ev-charge',
-    href: 'https://stanciya-miass.ru/charge',
+    href: '',
     isExternal: true,
   },
   {
@@ -76,7 +78,7 @@ export const PROMO_SERVICE_BLOCKS: PromoServiceBlock[] = [
     title: 'Миасс Такси',
     description: 'Комфортные поездки по городу и окрестностям на электромобилях',
     imageType: 'taxi',
-    href: 'https://stanciya-miass.ru/taxi',
+    href: '',
     isExternal: true,
   },
   {
@@ -84,7 +86,7 @@ export const PROMO_SERVICE_BLOCKS: PromoServiceBlock[] = [
     title: 'Электросамокаты',
     description: 'Поминутный прокат городских электросамокатов от точек «СТАНЦИЯ»',
     imageType: 'scooter',
-    href: 'https://stanciya-miass.ru/scooters',
+    href: '',
     isExternal: true,
   },
   {
@@ -92,11 +94,8 @@ export const PROMO_SERVICE_BLOCKS: PromoServiceBlock[] = [
     title: 'Электромобили Evolute',
     description: 'Тест-драйв, покупка и обслуживание электромобилей Evolute',
     imageType: 'evolute',
-    href: 'https://stanciya-miass.ru/evolute',
+    href: '',
     isExternal: true,
   },
 ];
 
-export function getActivePromoBlocks(): PromoServiceBlock[] {
-  return PROMO_SERVICE_BLOCKS.filter((block) => Boolean(block.href && block.href.trim()));
-}
