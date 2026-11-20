@@ -72,6 +72,26 @@ export interface SettingValue extends SettingDefinition {
   value: number | string;
 }
 
+export interface ClientOrderStats {
+  ordersCount: number;
+  doneCount: number;
+  /** Сумма выданных заказов, ₽ */
+  doneSum: number;
+  lastOrderAt: string | null;
+}
+
+export interface ClientListItem {
+  id: number;
+  name: string;
+  phone: string | null;
+  isActive: boolean;
+  registeredAt: string;
+  ordersCount: number;
+  doneCount: number;
+  doneSum: number;
+  lastOrderAt: string | null;
+}
+
 export interface PlatformModule {
   id: string;
   title: string;
@@ -80,6 +100,8 @@ export interface PlatformModule {
   homeBlock: ModuleHomeBlock;
   getStatsBlock?: (params: StatsFilterParams) => Promise<ModuleStatsBlockData>;
   attachGuestOrderToUser?: (accessKey: string, userId: number) => Promise<void>;
+  /** Статистика заказов модуля по зарегистрированным клиентам (раздел «Гости» в админке) */
+  getClientOrderStats?: (userIds: number[]) => Promise<Map<number, ClientOrderStats>>;
   /** Настройки модуля, которые администратор меняет в разделе «Настройки» */
   settings?: SettingDefinition[];
 }

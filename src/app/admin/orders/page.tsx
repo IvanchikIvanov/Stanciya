@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { formatPhoneDisplay } from '@/core/phone';
 import type { PointDto } from '@/core/points/service';
 import { formatMiassDateTime } from '@/core/time';
@@ -26,6 +26,25 @@ export default function AdminOrdersPage() {
   const [search, setSearch] = useState('');
 
   const [selectedOrder, setSelectedOrder] = useState<StaffOrderDto | null>(null);
+  // id открытого заказа: опрос раз в 5 секунд обновляет карточку, но не открывает её заново
+  const selectedIdRef = useRef<number | null>(null);
+  useEffect(() => {
+    selectedIdRef.current = selectedOrder?.id ?? null;
+  }, [selectedOrder]);
+
+  function closeOrder() {
+    selectedIdRef.current = null;
+    setSelectedOrder(null);
+  }
+
+  useEffect(() => {
+    if (!selectedOrder) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeOrder();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selectedOrder]);
   const [cancellingOrder, setCancellingOrder] = useState<StaffOrderDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -63,11 +82,11 @@ export default function AdminOrdersPage() {
         setTotalCount(data.totalCount ?? 0);
         setTotalPages(data.totalPages ?? 1);
         setLoadError(false);
-        if (selectedOrder) {
-          const updated = (data.orders ?? []).find(
-            (o: StaffOrderDto) => o.id === selectedOrder.id
-          );
-          if (updated) setSelectedOrder(updated);
+        const openId = selectedIdRef.current;
+        if (openId !== null) {
+          const updated = (data.orders ?? []).find((o: StaffOrderDto) => o.id === openId);
+          // обновляем только если эта же карточка всё ещё открыта
+          if (updated) setSelectedOrder((prev) => (prev && prev.id === updated.id ? updated : prev));
         }
       } catch {
         if (isFirst) setLoadError(true);
@@ -75,7 +94,7 @@ export default function AdminOrdersPage() {
         if (isFirst) setLoading(false);
       }
     },
-    [pointId, status, period, from, to, search, page, selectedOrder]
+    [pointId, status, period, from, to, search, page]
   );
 
   useEffect(() => {
@@ -286,7 +305,7 @@ export default function AdminOrdersPage() {
                 {orders.map((ord) => (
                   <tr
                     key={ord.id}
-                    onClick={() => { setSelectedOrder(ord); setCallDone(false); }}
+                    onClick={() => { selectedIdRef.current = ord.id; setSelectedOrder(ord); setCallDone(false); }}
                     className={`cursor-pointer hover:bg-blue-50/50 transition ${
                       selectedOrder?.id === ord.id ? 'bg-blue-50' : ''
                     }`}
@@ -378,8 +397,8 @@ export default function AdminOrdersPage() {
       {/* Детальная карточка заказа с историей статусов */}
       {selectedOrder && (
         <div
-          className="fixed inset-0 z-40 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4"
-          onClick={() => setSelectedOrder(null)}
+          className="fixed inset-0 z-40 bg-slate-900/50 flex items-center justify-center p-4"
+          onClick={() => closeOrder()}
         >
           <div
             className="bg-white rounded-panel shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6 space-y-5"
@@ -396,7 +415,7 @@ export default function AdminOrdersPage() {
               </div>
               <button
                 type="button"
-                onClick={() => setSelectedOrder(null)}
+                onClick={() => closeOrder()}
                 className="w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 font-bold text-slate-700"
               >
                 ✕

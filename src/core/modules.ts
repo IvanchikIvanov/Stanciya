@@ -1,4 +1,5 @@
 import type {
+  ClientOrderStats,
   AdminNavItem,
   ModuleHomeBlock,
   ModuleStatsBlockData,
@@ -99,3 +100,25 @@ export const PROMO_SERVICE_BLOCKS: PromoServiceBlock[] = [
   },
 ];
 
+
+/** Складывает статистику заказов клиентов по всем подключённым модулям. */
+export async function collectClientOrderStats(userIds: number[]): Promise<Map<number, ClientOrderStats>> {
+  const total = new Map<number, ClientOrderStats>();
+  for (const mod of moduleRegistry.values()) {
+    if (!mod.getClientOrderStats) continue;
+    const part = await mod.getClientOrderStats(userIds);
+    for (const [id, st] of part) {
+      const cur = total.get(id) ?? { ordersCount: 0, doneCount: 0, doneSum: 0, lastOrderAt: null };
+      total.set(id, {
+        ordersCount: cur.ordersCount + st.ordersCount,
+        doneCount: cur.doneCount + st.doneCount,
+        doneSum: cur.doneSum + st.doneSum,
+        lastOrderAt:
+          !cur.lastOrderAt || (st.lastOrderAt && st.lastOrderAt > cur.lastOrderAt)
+            ? st.lastOrderAt
+            : cur.lastOrderAt,
+      });
+    }
+  }
+  return total;
+}

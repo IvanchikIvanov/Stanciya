@@ -1,5 +1,5 @@
 import type { PlatformModule } from '@/core/types';
-import { attachGuestOrderToUserByAccessKey } from './orders/service';
+import { attachGuestOrderToUserByAccessKey, getCoffeeClientOrderStats } from './orders/service';
 import { COFFEE_SETTINGS } from './settings/definitions';
 import { getCoffeeStatsBlock } from './stats/service';
 
@@ -39,4 +39,5 @@ export const coffeeModule: PlatformModule = {
   getStatsBlock: getCoffeeStatsBlock,
   attachGuestOrderToUser: attachGuestOrderToUserByAccessKey,
   settings: COFFEE_SETTINGS,
+  getClientOrderStats: getCoffeeClientOrderStats,
 };

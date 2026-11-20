@@ -33,12 +33,15 @@ export default function CheckoutPage() {
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('+7 ');
   const [comment, setComment] = useState('');
-  const [consent, setConsent] = useState(false);
+  // Согласие даётся нажатием «Заказать» (текст под кнопкой), отдельной галочки нет
+  const consent = true;
   // Предложение создать профиль появляется, когда гость ввёл имя (имя на стакан)
   const [isClient, setIsClient] = useState(false);
   const [nameEntered, setNameEntered] = useState(false);
   const [createAccount, setCreateAccount] = useState(false);
   const [accountPassword, setAccountPassword] = useState('');
+  // Заказ создан, идёт переход на страницу заказа: не показываем «Корзина пуста»
+  const [orderPlaced, setOrderPlaced] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -210,6 +213,7 @@ export default function CheckoutPage() {
         return;
       }
 
+      setOrderPlaced(true);
       cart.clear();
 
       // Профиль создаём после заказа: если не получилось (номер уже занят и т. п.),
@@ -243,6 +247,21 @@ export default function CheckoutPage() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (orderPlaced) {
+    return (
+      <div className="min-h-screen bg-brand-surface flex items-center justify-center px-4">
+        <div role="status" className="flex flex-col items-center gap-4 text-center">
+          <span
+            aria-hidden="true"
+            className="w-12 h-12 rounded-full border-4 border-brand/20 border-t-brand animate-spin"
+          />
+          <div className="text-lg font-extrabold text-slate-900">Заказ отправлен</div>
+          <div className="text-sm text-slate-500">Открываем страницу заказа…</div>
+        </div>
+      </div>
+    );
   }
 
   if (cart.hydrated && cart.items.length === 0) {
@@ -623,33 +642,6 @@ export default function CheckoutPage() {
               </span>
             </div>
 
-            <label className="flex items-start gap-3 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={consent}
-                onChange={(e) => setConsent(e.target.checked)}
-                className="mt-1 w-5 h-5 rounded border-slate-300 text-brand focus:ring-brand"
-              />
-              <span className="text-xs sm:text-sm text-slate-700">
-                Я соглашаюсь на{' '}
-                <Link
-                  href="/info/consent"
-                  target="_blank"
-                  className="text-brand font-bold underline"
-                >
-                  обработку персональных данных
-                </Link>{' '}
-                и ознакомлен с{' '}
-                <Link
-                  href="/info/privacy"
-                  target="_blank"
-                  className="text-brand font-bold underline"
-                >
-                  политикой конфиденциальности
-                </Link>
-                .
-              </span>
-            </label>
 
             {fieldErrors.consent && (
               <p className="text-xs text-red-600 font-semibold">
@@ -669,6 +661,18 @@ export default function CheckoutPage() {
             >
               {submitting ? 'Отправляем заказ...' : `Заказать на ${cart.totalSum} ₽`}
             </button>
+
+            <p className="text-[11px] sm:text-xs leading-relaxed text-slate-500 text-center">
+              Нажимая «Заказать», вы соглашаетесь на{' '}
+              <Link href="/info/consent" target="_blank" className="text-brand font-semibold underline">
+                обработку персональных данных
+              </Link>{' '}
+              и принимаете{' '}
+              <Link href="/info/privacy" target="_blank" className="text-brand font-semibold underline">
+                политику конфиденциальности
+              </Link>
+              .
+            </p>
           </section>
         </form>
       </main>

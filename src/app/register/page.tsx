@@ -10,7 +10,7 @@ function ClientRegisterForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const returnTo = searchParams.get('returnTo') || '/profile';
+  const returnTo = searchParams.get('returnTo') || '/';
   const orderKey = searchParams.get('orderKey') || undefined;
 
   const [name, setName] = useState(searchParams.get('name') || '');

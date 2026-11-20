@@ -8,3 +8,6 @@ uploads/
 .env*.local
 *.tsbuildinfo
 next-env.d.ts
+
+# логи локального dev-сервера
+.dev-server*.log

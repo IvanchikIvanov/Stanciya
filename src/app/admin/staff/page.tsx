@@ -3,9 +3,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import type { PointDto } from '@/core/points/service';
 import type { StaffMemberDto } from '@/core/users/service';
+import { GuestsTab } from './GuestsTab';
 import { useUnsavedChangesWarning } from '@/core/ui/useUnsavedChanges';
 
 export default function AdminStaffPage() {
+  const [tab, setTab] = useState<'staff' | 'guests'>('staff');
   const [staff, setStaff] = useState<StaffMemberDto[]>([]);
   const [clients, setClients] = useState<
     Array<{ id: number; name: string; phone: string | null; isActive: boolean }>
@@ -215,12 +217,13 @@ export default function AdminStaffPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-extrabold text-slate-900">
-            Сотрудники и доступ
+            Сотрудники и гости
           </h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Учётные записи бариста и администраторов, сброс паролей
+            Учётные записи персонала, зарегистрированные гости и сброс паролей
           </p>
         </div>
+        {tab === 'staff' && (
         <button
           type="button"
           onClick={openNewStaff}
@@ -228,6 +231,29 @@ export default function AdminStaffPage() {
         >
           + Добавить сотрудника
         </button>
+        )}
+      </div>
+
+      <div role="tablist" aria-label="Учётные записи" className="flex gap-2">
+        {([
+          ['staff', 'Сотрудники'],
+          ['guests', 'Гости'],
+        ] as const).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={tab === id}
+            onClick={() => setTab(id)}
+            className={`min-h-[42px] px-5 rounded-full text-sm font-bold border transition ${
+              tab === id
+                ? 'bg-brand border-brand text-white'
+                : 'bg-white border-slate-200 text-slate-800 hover:border-brand/50'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       {feedback && (
@@ -281,7 +307,9 @@ export default function AdminStaffPage() {
         </form>
       )}
 
-      {editingId !== null && (
+      {tab === 'guests' && <GuestsTab onResetPassword={(t) => setResetTarget(t)} />}
+
+      {tab === 'staff' && editingId !== null && (
         <form
           onSubmit={handleSaveStaff}
           className="bg-white rounded-panel p-6 shadow-card border-2 border-brand space-y-4"
@@ -421,7 +449,7 @@ export default function AdminStaffPage() {
         </form>
       )}
 
-      {loading ? (
+      {tab === 'staff' && (loading ? (
         <div className="h-48 bg-white rounded-panel animate-pulse" />
       ) : loadError ? (
         <div className="bg-white rounded-panel p-8 text-center space-y-3 shadow-card">
@@ -507,37 +535,8 @@ export default function AdminStaffPage() {
             </div>
           </section>
 
-          {clients.length > 0 && (
-            <section className="bg-white rounded-panel p-5 shadow-card border border-blue-50 space-y-3">
-              <h2 className="text-base font-extrabold text-slate-900">
-                Зарегистрированные клиенты (сброс пароля по обращению)
-              </h2>
-              <div className="divide-y divide-slate-100 text-sm">
-                {clients.map((c) => (
-                  <div
-                    key={c.id}
-                    className="py-2.5 flex items-center justify-between gap-3"
-                  >
-                    <div>
-                      <span className="font-bold text-slate-900">{c.name}</span>
-                      <span className="text-xs text-slate-500 ml-2">{c.phone}</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setResetTarget({ id: c.id, label: `${c.name} (${c.phone})` })
-                      }
-                      className="text-xs font-bold text-brand hover:underline"
-                    >
-                      Задать новый пароль
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
         </>
-      )}
+      ))}
     </div>
   );
 }

@@ -1,4 +1,6 @@
 import { hashPassword, verifyPassword } from '../auth/password';
+import { collectClientOrderStats } from '../modules';
+import type { ClientListItem } from '../types';
 import { deleteAllUserSessions } from '../auth/session';
 import { query, transaction } from '../db';
 import { AppError } from '../errors';
@@ -341,4 +343,55 @@ export async function adminResetUserPassword(
 
   const hash = await hashPassword(newPassword);
   await query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, targetUserId]);
+}
+
+/** Зарегистрированные гости со статистикой заказов: поиск по имени и телефону, постранично. */
+export async function listClientsWithStats(input: {
+  search?: string;
+  page?: number;
+  pageSize?: number;
+}): Promise<{ clients: ClientListItem[]; totalCount: number; totalPages: number }> {
+  const pageSize = Math.min(Math.max(input.pageSize ?? 25, 5), 100);
+  const page = Math.max(input.page ?? 1, 1);
+  const q = input.search?.trim();
+  const where = q ? "role = 'client' AND (name ILIKE $1 OR phone ILIKE $1)" : "role = 'client'";
+  const params: unknown[] = q ? [`%${q}%`] : [];
+
+  const countRes = await query<{ c: number }>(`SELECT COUNT(*)::int AS c FROM users WHERE ${where}`, params);
+  const totalCount = countRes.rows[0]?.c ?? 0;
+
+  const rows = await query<{
+    id: number;
+    name: string;
+    phone: string | null;
+    is_active: boolean;
+    created_at: string;
+  }>(
+    `SELECT id, name, phone, is_active, created_at
+     FROM users
+     WHERE ${where}
+     ORDER BY created_at DESC, id DESC
+     LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}`,
+    params
+  );
+
+  const stats = await collectClientOrderStats(rows.rows.map((r) => r.id));
+  return {
+    totalCount,
+    totalPages: Math.max(1, Math.ceil(totalCount / pageSize)),
+    clients: rows.rows.map((r) => {
+      const st = stats.get(r.id);
+      return {
+        id: r.id,
+        name: r.name,
+        phone: r.phone,
+        isActive: r.is_active,
+        registeredAt: new Date(r.created_at).toISOString(),
+        ordersCount: st?.ordersCount ?? 0,
+        doneCount: st?.doneCount ?? 0,
+        doneSum: st?.doneSum ?? 0,
+        lastOrderAt: st?.lastOrderAt ?? null,
+      };
+    }),
+  };
 }

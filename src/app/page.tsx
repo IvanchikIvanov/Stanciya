@@ -197,7 +197,18 @@ export default function HomePage() {
               title={user ? user.name : 'Войти'}
               className="w-11 h-11 rounded-full flex items-center justify-center text-slate-900 hover:bg-white transition"
             >
-              <UserIcon className="w-6 h-6" />
+              {user ? (
+                // Вошедший: круглый значок с первой буквой имени и зелёной точкой
+                <span className="relative w-9 h-9 rounded-full bg-brand text-white flex items-center justify-center text-sm font-extrabold uppercase">
+                  {(user.name.trim()[0] || '•').toUpperCase()}
+                  <span
+                    aria-hidden="true"
+                    className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-brand-surface"
+                  />
+                </span>
+              ) : (
+                <UserIcon className="w-6 h-6" />
+              )}
             </Link>
 
             <Link
@@ -259,7 +270,8 @@ export default function HomePage() {
             </p>
           </div>
 
-          <div className="relative min-h-[260px] sm:min-h-[340px] lg:min-h-0">
+          {/* На десктопе фото уходит до правого края экрана, без пустой полосы справа */}
+          <div className="relative min-h-[260px] sm:min-h-[340px] lg:min-h-0 lg:absolute lg:inset-y-0 lg:right-0 lg:left-[max(46.5%,calc(50%-45px))]">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="/brand/hero.jpg"
@@ -580,10 +592,10 @@ function ProductCard({
             type="button"
             onClick={onOpen}
             disabled={outOfStock}
-            aria-label={`${hasOptions ? 'Настроить' : 'Добавить'} ${product.name}`}
+            aria-label={`${hasOptions ? 'Выбрать' : 'Добавить'} ${product.name}`}
             className="min-h-[40px] px-3 sm:px-4 shrink-0 rounded-xl border-[1.5px] border-brand text-brand text-xs sm:text-sm font-bold hover:bg-brand hover:text-white disabled:border-slate-300 disabled:text-slate-400 disabled:hover:bg-transparent transition"
           >
-            {hasOptions ? 'Настроить' : 'Добавить'}
+            {hasOptions ? 'Выбрать' : 'Добавить'}
           </button>
         </div>
       </div>

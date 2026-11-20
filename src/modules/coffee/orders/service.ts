@@ -1371,3 +1371,37 @@ export async function listAdminOrders(
     totalPages: Math.max(1, Math.ceil(totalCount / pageSize)),
   };
 }
+
+/** Статистика заказов по зарегистрированным клиентам для раздела «Гости» в админке. */
+export async function getCoffeeClientOrderStats(
+  userIds: number[]
+): Promise<Map<number, { ordersCount: number; doneCount: number; doneSum: number; lastOrderAt: string | null }>> {
+  const map = new Map<number, { ordersCount: number; doneCount: number; doneSum: number; lastOrderAt: string | null }>();
+  if (userIds.length === 0) return map;
+  const res = await query<{
+    user_id: number;
+    orders_count: number;
+    done_count: number;
+    done_sum: number;
+    last_order_at: string | null;
+  }>(
+    `SELECT user_id,
+            COUNT(*)::int AS orders_count,
+            COUNT(*) FILTER (WHERE status = 'done')::int AS done_count,
+            COALESCE(SUM(total) FILTER (WHERE status = 'done'), 0)::int AS done_sum,
+            MAX(created_at) AS last_order_at
+     FROM coffee_orders
+     WHERE user_id = ANY($1::int[])
+     GROUP BY user_id`,
+    [userIds]
+  );
+  for (const r of res.rows) {
+    map.set(r.user_id, {
+      ordersCount: r.orders_count,
+      doneCount: r.done_count,
+      doneSum: r.done_sum,
+      lastOrderAt: r.last_order_at ? new Date(r.last_order_at).toISOString() : null,
+    });
+  }
+  return map;
+}
