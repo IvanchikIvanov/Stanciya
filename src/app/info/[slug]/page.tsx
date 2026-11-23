@@ -93,9 +93,6 @@ export default async function InfoPage({
 
       <main className="max-w-4xl w-full mx-auto px-4 py-8 space-y-6 flex-1">
         <div className="bg-white rounded-panel p-6 sm:p-8 shadow-card border border-blue-50 space-y-4">
-          <div className="inline-block px-3 py-1 rounded-pill bg-amber-100 text-amber-900 text-xs font-bold">
-            Информационный раздел (текст предоставит заказчик)
-          </div>
           <h1 className="text-2xl font-extrabold text-slate-900">{pageData.title}</h1>
           <p className="text-sm font-semibold text-slate-500">{pageData.subtitle}</p>
           <div className="space-y-3 text-sm text-slate-700 leading-relaxed">

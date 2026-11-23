@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { Logo } from '@/core/ui/Logo';
 import { NetworkBanner } from '@/core/ui/NetworkBanner';
+import { formatMiassDateTime, getMiassDateParts } from '@/core/time';
 import type { GuestOrderDto, OrderStatus } from '@/modules/coffee/orders/service';
 import { rememberRecentOrder } from '@/modules/coffee/orders/recent-orders-store';
 
@@ -21,20 +22,13 @@ export default function OrderStatusPage() {
   const accessKey = params.accessKey;
 
   const [order, setOrder] = useState<GuestOrderDto | null>(null);
-  const [user, setUser] = useState<{ id: number; name: string; role: string } | null>(
-    null
-  );
+  const [isGuest, setIsGuest] = useState(false);
   const [loading, setLoading] = useState(true);
   const [notFoundError, setNotFoundError] = useState(false);
   const [pollOffline, setPollOffline] = useState(false);
 
   const [confirmCancel, setConfirmCancel] = useState(false);
-  // Итог создания профиля при оформлении (?profile=created|failed)
-  const [profileResult, setProfileResult] = useState<'created' | 'failed' | null>(null);
-  useEffect(() => {
-    const v = new URLSearchParams(window.location.search).get('profile');
-    if (v === 'created' || v === 'failed') setProfileResult(v);
-  }, []);
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'manual'>('idle');
   const [cancelling, setCancelling] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
 
@@ -76,7 +70,7 @@ export default function OrderStatusPage() {
     fetch('/api/core/auth/me', { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
-        if (d?.user) setUser(d.user);
+        if (d) setIsGuest(!d.user);
       })
       .catch(() => {});
 
@@ -110,6 +104,17 @@ export default function OrderStatusPage() {
       setActionMessage('Не удалось отменить заказ. Проверьте соединение.');
     } finally {
       setCancelling(false);
+    }
+  }
+
+  const orderPath = `/order/${encodeURIComponent(accessKey)}`;
+
+  async function copyOrderLink() {
+    try {
+      await navigator.clipboard.writeText(new URL(orderPath, window.location.origin).href);
+      setCopyState('copied');
+    } catch {
+      setCopyState('manual');
     }
   }
 
@@ -181,7 +186,7 @@ export default function OrderStatusPage() {
                 href="/order"
                 className="inline-block px-6 py-3 rounded-btn border border-slate-300 bg-white text-slate-800 hover:border-brand hover:text-brand font-bold text-sm transition"
               >
-                Найти по номеру и телефону
+                Мои заказы
               </Link>
             </div>
           </div>
@@ -192,7 +197,7 @@ export default function OrderStatusPage() {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                    Номер заказа
+                    Код выдачи
                   </span>
                   <h1 className="text-3xl font-extrabold text-slate-900">
                     №{order.number}
@@ -214,7 +219,7 @@ export default function OrderStatusPage() {
               </div>
 
               <div
-                className={`p-4 rounded-card font-bold text-sm sm:text-base ${
+                className={`p-4 rounded-card font-extrabold text-base sm:text-lg ${
                   order.status === 'cancelled'
                     ? 'bg-red-50 text-red-800 border border-red-200'
                     : order.status === 'ready'
@@ -265,10 +270,10 @@ export default function OrderStatusPage() {
                   <div className="text-xs font-bold text-slate-400 uppercase">
                     Точка самовывоза
                   </div>
-                  <div className="font-extrabold text-slate-900 mt-0.5">
+                  <div className="text-base font-extrabold text-slate-900 mt-0.5 break-words">
                     {order.pointName}
                   </div>
-                  <div className="text-xs text-slate-600">{order.pointAddress}</div>
+                  <div className="text-sm text-slate-600 break-words">{order.pointAddress}</div>
                   {['accepted', 'cooking', 'ready'].includes(order.status) && (
                     <div className="text-xs font-bold text-brand mt-1">
                       Телефон точки: {order.pointPhone}
@@ -286,7 +291,9 @@ export default function OrderStatusPage() {
                         order.pickupTimeAdjusted ? 'text-brand' : 'text-slate-900'
                       }`}
                     >
-                      Сегодня к {order.pickupTimeFormatted}
+                      {getMiassDateParts(new Date(order.pickupAt)).dateString === getMiassDateParts().dateString
+                        ? `Сегодня к ${order.pickupTimeFormatted}`
+                        : formatMiassDateTime(order.pickupAt)}
                     </span>
                     {order.pickupTimeAdjusted && (
                       <span className="px-2.5 py-0.5 rounded-pill bg-amber-100 text-amber-900 text-xs font-extrabold">
@@ -307,6 +314,36 @@ export default function OrderStatusPage() {
                 </div>
               )}
 
+              <div className="space-y-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={copyOrderLink}
+                  className="min-h-11 px-4 py-2 rounded-btn border border-brand/40 text-brand hover:bg-brand-light font-bold text-sm transition"
+                >
+                  Скопировать ссылку
+                </button>
+                <p className="text-xs text-slate-600">
+                  Сохраните персональную ссылку, чтобы открыть заказ на другом устройстве.
+                </p>
+                {copyState === 'copied' && (
+                  <p role="status" className="text-sm font-semibold text-emerald-800">
+                    Ссылка скопирована
+                  </p>
+                )}
+                {copyState === 'manual' && (
+                  <label className="block text-xs font-semibold text-slate-700">
+                    Выделите и скопируйте ссылку
+                    <input
+                      type="text"
+                      readOnly
+                      value={new URL(orderPath, window.location.origin).href}
+                      onFocus={(event) => event.currentTarget.select()}
+                      className="mt-1 block w-full min-w-0 rounded-btn border border-slate-300 px-3 py-2 text-base font-normal"
+                    />
+                  </label>
+                )}
+              </div>
+
               {/* Действия по статусу */}
               {order.status === 'new' && (
                 <div className="pt-2 border-t border-slate-100">
@@ -323,7 +360,7 @@ export default function OrderStatusPage() {
                       <div className="text-sm font-bold text-red-900">
                         Вы уверены, что хотите отменить заказ №{order.number}?
                       </div>
-                      <div className="flex items-center gap-3">
+                      <div className="flex flex-wrap items-center gap-3">
                         <button
                           type="button"
                           disabled={cancelling}
@@ -368,7 +405,7 @@ export default function OrderStatusPage() {
                     key={item.id}
                     className="py-3 flex items-start justify-between gap-4"
                   >
-                    <div>
+                    <div className="min-w-0 break-words">
                       <div className="font-bold text-slate-900 text-sm">
                         {item.productName} × {item.quantity}
                       </div>
@@ -387,7 +424,7 @@ export default function OrderStatusPage() {
                 ))}
               </div>
               {order.comment && (
-                <div className="p-3 rounded-btn bg-slate-50 text-xs text-slate-600">
+                <div className="p-3 rounded-btn bg-slate-50 text-xs text-slate-600 break-words">
                   <span className="font-bold text-slate-700">Комментарий: </span>
                   {order.comment}
                 </div>
@@ -402,18 +439,21 @@ export default function OrderStatusPage() {
               </div>
             </section>
 
-            {profileResult === 'created' && user && (
-              <div role="status" className="p-4 rounded-card bg-emerald-50 border border-emerald-200 text-sm font-semibold text-emerald-900">
-                Профиль создан, заказ сохранён в истории. В следующий раз имя и телефон подставятся сами.
-              </div>
+            {isGuest && !order.isLinkedToProfile && (
+              <section className="bg-white rounded-panel p-5 shadow-card border border-blue-100 space-y-2">
+                <h2 className="text-base font-extrabold text-slate-900">Сохранить заказ в профиле</h2>
+                <p className="text-sm text-slate-600">
+                  Заказ появится в истории, а в следующий раз имя и телефон подставятся автоматически.
+                </p>
+                <Link
+                  href={{ pathname: '/register', query: { orderKey: accessKey } }}
+                  prefetch={false}
+                  className="inline-flex min-h-11 items-center font-bold text-sm text-brand underline underline-offset-2"
+                >
+                  Создать профиль
+                </Link>
+              </section>
             )}
-            {profileResult === 'failed' && !user && (
-              <div role="status" className="p-4 rounded-card bg-amber-50 border border-amber-200 text-sm font-semibold text-amber-950">
-                Заказ оформлен, но профиль создать не удалось — возможно, этот номер уже зарегистрирован.{' '}
-                <Link href="/login" className="underline text-brand">Войти</Link>
-              </div>
-            )}
-
           </>
         )}
       </main>

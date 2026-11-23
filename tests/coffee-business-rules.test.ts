@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import { closeDb, query } from '../src/core/db';
 import { runSeed } from '../scripts/seed';
+import { GET as getGuestOrder } from '../src/app/api/coffee/orders/[accessKey]/route';
 import { loginStaff } from '../src/core/auth/service';
 import { calculatePointAvailability, listPublicPoints } from '../src/core/points/service';
 import { getPublicCatalog, verifyCartItems } from '../src/modules/coffee/catalog/service';
@@ -13,7 +14,6 @@ import '../src/modules';
 import {
   cancelOrderByGuest,
   createCoffeeOrder,
-  findOrderAccessKeyByNumber,
   getOrderByAccessKeyForGuest,
   getStaffOrderById,
   listBaristaQueue,
@@ -93,7 +93,7 @@ describe('Stage 4: Coffee Business Rules (Section 5 & Section 6)', () => {
     assert.equal(beforeOpen.closedUntilLabel, 'Закрыто до 08:00');
   });
 
-  it('Guest can find their order by random number only (lookup fallback)', async () => {
+  it('Guest can open their order with the personal link, while the pickup number grants no access', async () => {
     const { products } = await getPublicCatalog();
     const points = await listPublicPoints('coffee', TEST_NOW);
     const point = points[0];
@@ -121,26 +121,23 @@ describe('Stage 4: Coffee Business Rules (Section 5 & Section 6)', () => {
     assert.match(order.number, /[A-Z]/);
     assert.match(order.number, /[2-9]/);
 
-    // Поиск только по номеру: регистр и разделители не важны
-    assert.equal(await findOrderAccessKeyByNumber(order.number), order.accessKey);
-    assert.equal(await findOrderAccessKeyByNumber(order.number.toLowerCase()), order.accessKey);
-    assert.equal(
-      await findOrderAccessKeyByNumber(`${order.number.slice(0, 3)}-${order.number.slice(3)}`),
-      order.accessKey
-    );
-
-    // Несуществующий номер -> заказ не найден
-    assert.equal(await findOrderAccessKeyByNumber('ZZZZZ9'), null);
-
-    // Некорректные данные и старые числовые номера не ищутся
+    assert.notEqual(order.number, order.accessKey);
+    const request = new Request('http://localhost');
+    const byPickupCode = await getGuestOrder(request, {
+      params: Promise.resolve({ accessKey: order.number }),
+    });
+    assert.equal(byPickupCode.status, 404);
+    const byPersonalLink = await getGuestOrder(request, {
+      params: Promise.resolve({ accessKey: order.accessKey }),
+    });
+    assert.equal(byPersonalLink.status, 200);
+    assert.equal(byPersonalLink.headers.get('cache-control'), 'private, no-store');
+    assert.equal((await byPersonalLink.json()).order.number, order.number);
     await assert.rejects(
-      () => findOrderAccessKeyByNumber(''),
-      (err: any) => err.code === 'VALIDATION_ERROR'
+      () => cancelOrderByGuest(order.number),
+      (err: any) => err.code === 'ORDER_NOT_FOUND'
     );
-    await assert.rejects(
-      () => findOrderAccessKeyByNumber('1001'),
-      (err: any) => err.code === 'VALIDATION_ERROR'
-    );
+    assert.equal((await getOrderByAccessKeyForGuest(order.accessKey))?.status, 'new');
 
     // Убираем за собой, чтобы не влиять на тесты лимитов по телефону
     await cancelOrderByGuest(order.accessKey);

@@ -34,13 +34,7 @@ export default function CheckoutPage() {
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('+7 ');
   const [comment, setComment] = useState('');
-  // Предложение создать профиль появляется, когда гость ввёл имя (имя на стакан)
-  const [isClient, setIsClient] = useState(false);
-  const [nameEntered, setNameEntered] = useState(false);
-  const [createAccount, setCreateAccount] = useState(false);
-  const [accountPassword, setAccountPassword] = useState('');
-  // Заказ создан, идёт переход на страницу заказа: не показываем «Корзина пуста»
-  const [orderPlaced, setOrderPlaced] = useState(false);
+  const [placedOrderHref, setPlacedOrderHref] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -87,7 +81,6 @@ export default function CheckoutPage() {
       if (meRes.ok) {
         const meData = await meRes.json();
         if (meData.user && meData.user.role === 'client') {
-          setIsClient(true);
           setCustomerName((prev) => prev || meData.user.name || '');
           if (meData.user.phone) {
             setCustomerPhone(meData.user.phone);
@@ -134,7 +127,7 @@ export default function CheckoutPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (submitting) return;
+    if (submitting || placedOrderHref) return;
 
     setGeneralError(null);
     setFieldErrors({});
@@ -152,10 +145,6 @@ export default function CheckoutPage() {
 
     if (comment.trim().length > 200) {
       nextFieldErrors.comment = 'Комментарий не должен превышать 200 символов';
-    }
-
-    if (!isClient && createAccount && accountPassword.length < 8) {
-      nextFieldErrors.accountPassword = 'Пароль должен содержать не менее 8 символов';
     }
 
     if (Object.keys(nextFieldErrors).length > 0) {
@@ -211,37 +200,11 @@ export default function CheckoutPage() {
         return;
       }
 
-      setOrderPlaced(true);
-      cart.clear();
-
-      // Запоминаем заказ на этом устройстве, чтобы к нему можно было вернуться из каталога
+      const orderHref = `/order/${encodeURIComponent(data.order.accessKey)}`;
+      setPlacedOrderHref(orderHref);
       rememberRecentOrder({ accessKey: data.order.accessKey, number: data.order.number });
-
-      // Профиль создаём после заказа: если не получилось (номер уже занят и т. п.),
-      // заказ всё равно оформлен, а страница заказа снова предложит сохранить данные
-      let registered = '';
-      if (!isClient && createAccount) {
-        try {
-          const regRes = await fetch('/api/core/auth/client/register', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              name: customerName.trim(),
-              phone: customerPhone,
-              password: accountPassword,
-              passwordConfirm: accountPassword,
-              // Согласие даётся самим фактом оформления заказа (см. фразу со ссылками ниже)
-              consent: true,
-              attachOrderAccessKey: data.order.accessKey,
-            }),
-          });
-          registered = regRes.ok ? '?profile=created' : '?profile=failed';
-        } catch {
-          registered = '?profile=failed';
-        }
-      }
-
-      router.push(`/order/${data.order.accessKey}${registered}`);
+      cart.clear();
+      router.replace(orderHref);
     } catch {
       setGeneralError(
         'Не удалось отправить заказ из-за ошибки сети. Проверьте соединение и нажмите «Повторить».'
@@ -251,18 +214,27 @@ export default function CheckoutPage() {
     }
   }
 
-  if (orderPlaced) {
+  if (submitting || placedOrderHref) {
     return (
-      <div className="min-h-screen bg-brand-surface flex items-center justify-center px-4">
-        <div role="status" className="flex flex-col items-center gap-4 text-center">
+      <main className="min-h-screen bg-brand-surface flex flex-col items-center justify-center gap-4 px-4 text-center">
+        <div role="status" className="flex flex-col items-center gap-3">
           <span
             aria-hidden="true"
-            className="w-12 h-12 rounded-full border-4 border-brand/20 border-t-brand animate-spin"
+            className="w-12 h-12 rounded-full border-4 border-brand/20 border-t-brand motion-safe:animate-spin"
           />
-          <div className="text-lg font-extrabold text-slate-900">Заказ отправлен</div>
-          <div className="text-sm text-slate-500">Открываем страницу заказа…</div>
+          <div className="text-lg font-extrabold text-slate-900">
+            {placedOrderHref ? 'Заказ отправлен' : 'Отправляем заказ…'}
+          </div>
+          {placedOrderHref && (
+            <p className="text-sm text-slate-600">Открываем страницу заказа…</p>
+          )}
         </div>
-      </div>
+        {placedOrderHref && (
+          <Link href={placedOrderHref} replace className="text-sm font-bold text-brand underline underline-offset-2">
+            Открыть заказ
+          </Link>
+        )}
+      </main>
     );
   }
 
@@ -327,7 +299,6 @@ export default function CheckoutPage() {
               <span>{generalError}</span>
               <button
                 type="submit"
-                disabled={submitting}
                 className="px-3.5 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-xs font-extrabold"
               >
                 Повторить
@@ -359,7 +330,7 @@ export default function CheckoutPage() {
                         setSelectedPointIdInStorage(pt.id);
                         setIdempotencyKey(generateUuid());
                       }}
-                      className={`p-4 rounded-btn border text-left transition flex items-center justify-between gap-3 ${
+                      className={`p-4 rounded-btn border text-left transition flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3 ${
                         !canSelect
                           ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
                           : isSelected
@@ -367,7 +338,7 @@ export default function CheckoutPage() {
                           : 'bg-white border-slate-200 hover:border-blue-300 text-slate-800'
                       }`}
                     >
-                      <div>
+                      <div className="min-w-0 break-words">
                         <div className="font-extrabold text-sm sm:text-base">
                           {pt.name}
                         </div>
@@ -375,7 +346,7 @@ export default function CheckoutPage() {
                           {pt.address}
                         </div>
                       </div>
-                      <div className="text-xs font-bold shrink-0">
+                      <div className="text-xs font-bold sm:max-w-[45%] sm:text-right">
                         {!pt.isOpenNow || !pt.acceptsOrders ? (
                           <span className="text-red-600">
                             {pt.closedUntilLabel || 'Закрыто'}
@@ -470,7 +441,7 @@ export default function CheckoutPage() {
                         setPickupTime(e.target.value);
                         setIdempotencyKey(generateUuid());
                       }}
-                      className="w-full sm:w-64 px-4 py-3 rounded-btn border border-slate-300 font-bold text-sm text-slate-900"
+                      className="w-full max-w-full sm:w-64 px-4 py-3 rounded-btn border border-slate-300 font-bold text-base text-slate-900"
                     >
                       {currentPoint.slots.map((s) => (
                         <option key={s.time} value={s.time}>
@@ -515,11 +486,8 @@ export default function CheckoutPage() {
                     setCustomerName(e.target.value);
                     setIdempotencyKey(generateUuid());
                   }}
-                  onBlur={() => {
-                    if (customerName.trim().length >= 2) setNameEntered(true);
-                  }}
                   placeholder="Например, Александр"
-                  className="w-full px-4 py-3 rounded-btn border border-slate-300 text-sm text-slate-900"
+                  className="w-full min-w-0 px-4 py-3 rounded-btn border border-slate-300 text-base text-slate-900"
                 />
                 {fieldErrors.customerName && (
                   <p className="text-xs text-red-600 font-semibold mt-1">
@@ -542,7 +510,7 @@ export default function CheckoutPage() {
                   value={customerPhone}
                   onChange={(e) => handlePhoneChange(e.target.value)}
                   placeholder="+7 (900) 000-00-00"
-                  className="w-full px-4 py-3 rounded-btn border border-slate-300 text-sm text-slate-900"
+                  className="w-full min-w-0 px-4 py-3 rounded-btn border border-slate-300 text-base text-slate-900"
                 />
                 {fieldErrors.customerPhone && (
                   <p className="text-xs text-red-600 font-semibold mt-1">
@@ -569,7 +537,7 @@ export default function CheckoutPage() {
                   setIdempotencyKey(generateUuid());
                 }}
                 placeholder="Например: сделать погорячее, без крышки"
-                className="w-full px-4 py-2.5 rounded-btn border border-slate-300 text-sm text-slate-900"
+                className="w-full min-w-0 px-4 py-2.5 rounded-btn border border-slate-300 text-base text-slate-900"
               />
               {fieldErrors.comment && (
                 <p className="text-xs text-red-600 font-semibold mt-1">
@@ -577,62 +545,6 @@ export default function CheckoutPage() {
                 </p>
               )}
             </div>
-
-            {/* Предложение профиля: после того как гость ввёл имя; заказ без него не блокируется */}
-            {!isClient && (nameEntered || createAccount) && (
-              <div className="rounded-card border border-brand/25 bg-brand-light p-4 space-y-3">
-                <label className="flex items-start gap-3 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={createAccount}
-                    onChange={(e) => {
-                      setCreateAccount(e.target.checked);
-                      if (!e.target.checked) setAccountPassword('');
-                    }}
-                    className="mt-0.5 w-5 h-5 accent-brand shrink-0"
-                  />
-                  <span>
-                    <span className="block text-sm font-extrabold text-slate-900">
-                      {customerName.trim()
-                        ? `${customerName.trim()}, запомнить вас?`
-                        : 'Запомнить вас?'}
-                    </span>
-                    <span className="block text-xs text-slate-600 mt-0.5">
-                      Создадим профиль вместе с заказом: в следующий раз имя и телефон подставятся
-                      сами, а заказы будут в истории. Необязательно.
-                    </span>
-                  </span>
-                </label>
-
-                {createAccount && (
-                  <div>
-                    <label
-                      htmlFor="checkout-account-password"
-                      className="block text-sm font-bold text-slate-700 mb-1.5"
-                    >
-                      Придумайте пароль (не менее 8 символов)
-                    </label>
-                    <input
-                      id="checkout-account-password"
-                      type="password"
-                      autoComplete="new-password"
-                      minLength={8}
-                      value={accountPassword}
-                      onChange={(e) => setAccountPassword(e.target.value)}
-                      className="w-full sm:max-w-xs px-4 py-3 rounded-btn border border-slate-300 bg-white text-sm text-slate-900"
-                    />
-                    {fieldErrors.accountPassword && (
-                      <p className="text-xs text-red-600 font-semibold mt-1">
-                        {fieldErrors.accountPassword}
-                      </p>
-                    )}
-                    <p className="text-[11px] text-slate-500 mt-1">
-                      Войти можно будет по номеру телефона и этому паролю.
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
           </section>
 
           {/* 4. Подтверждение заказа */}
@@ -646,14 +558,10 @@ export default function CheckoutPage() {
 
             <button
               type="submit"
-              disabled={
-                submitting ||
-                !selectedPointId ||
-                !currentPoint?.hasSlotsToday
-              }
+              disabled={!selectedPointId || !currentPoint?.hasSlotsToday}
               className="w-full min-h-[52px] py-3.5 px-6 rounded-btn bg-brand hover:bg-brand-dark disabled:opacity-50 text-white font-extrabold text-base transition shadow-sm"
             >
-              {submitting ? 'Отправляем заказ...' : `Заказать на ${cart.totalSum} ₽`}
+              Заказать на {cart.totalSum} ₽
             </button>
 
             <p className="text-[11px] sm:text-xs leading-relaxed text-slate-500 text-center">

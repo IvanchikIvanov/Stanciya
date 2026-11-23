@@ -13,7 +13,9 @@ export async function GET(
     if (!order) {
       throw new AppError(404, 'ORDER_NOT_FOUND', 'Заказ не найден');
     }
-    return NextResponse.json({ order });
+    return NextResponse.json({ order }, {
+      headers: { 'Cache-Control': 'private, no-store' },
+    });
   } catch (err) {
     return handleApiError(err);
   }

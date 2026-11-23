@@ -6,7 +6,7 @@ import { closeDb, query } from '../src/core/db';
 import { runSeed } from '../scripts/seed';
 import { loginClient, loginStaff, registerClient } from '../src/core/auth/service';
 import { getUserBySessionId, requireRole } from '../src/core/auth/session';
-import { collectModulesStats } from '../src/core/modules';
+import { attachGuestOrderAcrossModules, collectModulesStats } from '../src/core/modules';
 import { listPublicPoints, updatePoint } from '../src/core/points/service';
 import { createStaff, updateStaff } from '../src/core/users/service';
 import {
@@ -234,7 +234,7 @@ describe('Stage 10: All 12 Acceptance Scenarios (Section 15)', () => {
     );
   });
 
-  it('Scenario 6: Client registers, logs in, places order, and sees it in history (pre-registration orders not auto-linked)', async () => {
+  it('Scenario 6: A client sees their orders and can save a guest order using its personal link', async () => {
     const clientPhone = '+79120000006';
     await query('DELETE FROM users WHERE phone = $1', [clientPhone]);
 
@@ -286,6 +286,11 @@ describe('Stage 10: All 12 Acceptance Scenarios (Section 15)', () => {
     const history = await listClientOrders(reg.user.id);
     assert.equal(history.length, 1);
     assert.equal(history[0].accessKey, clientOrder.accessKey);
+
+    await attachGuestOrderAcrossModules(preRegOrder.accessKey, reg.user.id);
+    const updatedHistory = await listClientOrders(reg.user.id);
+    assert.equal(updatedHistory.length, 2);
+    assert.ok(updatedHistory.some((order) => order.accessKey === preRegOrder.accessKey));
 
     await cancelOrderByGuest(clientOrder.accessKey, reg.user.id);
     await query('DELETE FROM users WHERE id = $1', [reg.user.id]);

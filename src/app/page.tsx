@@ -160,10 +160,12 @@ export default function HomePage() {
 
       {/* ───────── Шапка ───────── */}
       <header className="sticky top-0 z-30 bg-brand-surface/90 backdrop-blur border-b border-slate-200/60">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 sm:h-[72px] flex items-center gap-6">
-          <Logo variant="dark" size="lg" />
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 sm:h-[72px] flex items-center gap-2 sm:gap-4 xl:gap-6">
+          <div className="w-[202px] min-w-0 [&_img]:h-auto sm:w-[227px]">
+            <Logo variant="dark" size="lg" />
+          </div>
 
-          <nav aria-label="Разделы" className="hidden lg:flex items-center gap-7 ml-6 text-[15px] font-semibold text-slate-900">
+          <nav aria-label="Разделы" className="hidden lg:flex items-center gap-4 xl:gap-7 ml-1 xl:ml-6 whitespace-nowrap text-[15px] font-semibold text-slate-900">
             <a href="#menu" className="hover:text-brand transition">Кофе</a>
             <a href="#how" className="hover:text-brand transition">Как это работает</a>
             <Link href="/info/points" className="hover:text-brand transition">Наши точки</Link>
@@ -172,7 +174,7 @@ export default function HomePage() {
             )}
           </nav>
 
-          <div className="ml-auto flex items-center gap-1.5 sm:gap-3">
+          <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-3">
             {points.length > 0 && (
               <label className="hidden md:flex items-center gap-1.5 text-sm font-semibold text-slate-900">
                 <PinIcon className="w-4 h-4 text-slate-700" />
@@ -180,7 +182,7 @@ export default function HomePage() {
                 <select
                   value={selectedPointId ?? ''}
                   onChange={(e) => handleSelectPoint(e.target.value ? Number(e.target.value) : null)}
-                  className="bg-transparent font-semibold max-w-[13rem] truncate focus:outline-none cursor-pointer"
+                  className="bg-transparent font-semibold max-w-[9rem] xl:max-w-[13rem] truncate focus:outline-none cursor-pointer"
                 >
                   <option value="">Выберите точку</option>
                   {points.map((pt) => (
@@ -191,6 +193,13 @@ export default function HomePage() {
                 </select>
               </label>
             )}
+
+            <Link
+              href="/order"
+              className="inline-flex min-h-11 items-center whitespace-nowrap px-1 text-xs font-bold text-slate-900 hover:text-brand sm:px-2 sm:text-sm"
+            >
+              Мои заказы
+            </Link>
 
             <Link
               href={accountHref}
@@ -481,7 +490,6 @@ export default function HomePage() {
             <span>г. Миасс</span>
           </div>
           <nav aria-label="Информация" className="flex flex-wrap gap-x-5 gap-y-2">
-            <Link href="/order" className="hover:text-brand">Найти заказ</Link>
             <Link href="/info/points" className="hover:text-brand">Адреса и часы работы</Link>
             <Link href="/info/pickup" className="hover:text-brand">Условия самовывоза</Link>
             <Link href="/info/contacts" className="hover:text-brand">Контакты</Link>

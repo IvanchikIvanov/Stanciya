@@ -1,6 +1,6 @@
 'use client';
 
-import React, { Suspense, useState } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Logo } from '@/core/ui/Logo';
@@ -10,8 +10,10 @@ function ClientRegisterForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const returnTo = searchParams.get('returnTo') || '/';
   const orderKey = searchParams.get('orderKey') || undefined;
+  const orderPath = orderKey ? `/order/${encodeURIComponent(orderKey)}` : null;
+  const returnTo = orderPath ? '/profile' : searchParams.get('returnTo') || '/';
+  const loginPath = `/login?returnTo=${encodeURIComponent(returnTo)}`;
 
   const [name, setName] = useState(searchParams.get('name') || '');
   const [phone, setPhone] = useState(searchParams.get('phone') || '+7 ');
@@ -23,6 +25,31 @@ function ClientRegisterForm() {
   const [phoneAlreadyExists, setPhoneAlreadyExists] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!orderKey) return;
+
+    const controller = new AbortController();
+    async function fillFromOrder(key: string) {
+      try {
+        const response = await fetch(`/api/coffee/orders/${encodeURIComponent(key)}`, {
+          cache: 'no-store',
+          signal: controller.signal,
+        });
+        if (!response.ok) return;
+        const { order } = await response.json();
+        if (!controller.signal.aborted) {
+          setName((current) => current || order.customerName);
+          setPhone((current) => current === '+7 ' ? order.customerPhone : current);
+        }
+      } catch {
+        // При недоступности заказа данные можно ввести вручную.
+      }
+    }
+
+    void fillFromOrder(orderKey);
+    return () => controller.abort();
+  }, [orderKey]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -88,7 +115,7 @@ function ClientRegisterForm() {
           {phoneAlreadyExists && (
             <div>
               <Link
-                href={`/login?phone=${encodeURIComponent(phone)}&returnTo=${encodeURIComponent(returnTo)}`}
+                href={loginPath}
                 className="text-brand font-extrabold underline"
               >
                 Войти в существующий аккаунт →
@@ -205,14 +232,13 @@ function ClientRegisterForm() {
             Соглашаюсь на{' '}
             <Link href="/info/consent" target="_blank" className="text-brand font-bold underline">
               обработку персональных данных
-            </Link>{' '}
-            и с{' '}
-            <Link href="/info/privacy" target="_blank" className="text-brand font-bold underline">
-              политикой конфиденциальности
             </Link>
             .
           </span>
         </label>
+        <Link href="/info/privacy" target="_blank" className="inline-block text-xs text-brand font-bold underline">
+          Политика конфиденциальности
+        </Link>
 
         <button
           type="submit"
@@ -226,13 +252,13 @@ function ClientRegisterForm() {
       <div className="mt-6 pt-4 border-t border-slate-100 text-center text-sm text-slate-600 space-y-2">
         <div>
           Уже есть аккаунт?{' '}
-          <Link href="/login" className="text-brand font-bold underline">
+          <Link href={orderPath ? loginPath : '/login'} className="text-brand font-bold underline">
             Войти
           </Link>
         </div>
         <div>
-          <Link href="/" className="text-xs text-slate-500 hover:underline">
-            ← Вернуться в каталог
+          <Link href={orderPath || '/'} className="text-xs text-slate-500 hover:underline">
+            {orderPath ? '← Вернуться к заказу' : '← Вернуться в каталог'}
           </Link>
         </div>
       </div>

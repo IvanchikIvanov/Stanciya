@@ -183,8 +183,7 @@ const ORDER_NUMBER_ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
 
 /**
  * Случайный номер заказа: 6 символов, обязательно есть буква и цифра.
- * ~887 млн комбинаций — перебором не подобрать, поэтому номер сам по себе
- * является «паролем» от заказа и поиск работает без телефона.
+ * Номер используют для выдачи. Для доступа к заказу служит отдельный accessKey.
  */
 function generateOrderNumber(): string {
   for (;;) {
@@ -632,27 +631,6 @@ async function fetchOrderItems(orderIds: number[]): Promise<Map<number, OrderIte
   }
 
   return map;
-}
-
-/**
- * Поиск заказа гостем по случайному номеру (буквы+цифры). Номер непредсказуем,
- * поэтому сам по себе является «паролем» от заказа — телефон не нужен.
- * Старые числовые номера (до миграции 004) намеренно не ищутся: они предсказуемы.
- * Возвращает accessKey или null, если номер не найден.
- */
-export async function findOrderAccessKeyByNumber(numberRaw: string): Promise<string | null> {
-  const code = (numberRaw ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-  if (!/^[A-Z0-9]{4,16}$/.test(code) || !/[A-Z]/.test(code)) {
-    throw new AppError(400, 'VALIDATION_ERROR', 'Введите номер заказа', {
-      number: 'Номер заказа — буквы и цифры, например K7M294',
-    });
-  }
-
-  const res = await query<{ access_key: string }>(
-    'SELECT access_key FROM coffee_orders WHERE number = $1',
-    [code]
-  );
-  return res.rows[0]?.access_key ?? null;
 }
 
 export async function getOrderByAccessKeyForGuest(
