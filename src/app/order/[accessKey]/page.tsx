@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation';
 import { Logo } from '@/core/ui/Logo';
 import { NetworkBanner } from '@/core/ui/NetworkBanner';
 import type { GuestOrderDto, OrderStatus } from '@/modules/coffee/orders/service';
+import { rememberRecentOrder } from '@/modules/coffee/orders/recent-orders-store';
 
 const STEPS: Array<{ status: OrderStatus; label: string }> = [
   { status: 'new', label: 'Новый' },
@@ -59,6 +60,8 @@ export default function OrderStatusPage() {
         setOrder(data.order);
         setNotFoundError(false);
         setPollOffline(false);
+        // Запоминаем заказ на устройстве (идемпотентно) — работает и при открытии по прямой ссылке
+        rememberRecentOrder({ accessKey, number: data.order.number });
       } catch {
         setPollOffline(true);
       } finally {
@@ -167,12 +170,20 @@ export default function OrderStatusPage() {
             <p className="text-sm text-slate-600">
               Проверьте правильность ссылки на заказ.
             </p>
-            <Link
-              href="/"
-              className="inline-block px-6 py-3 rounded-btn bg-brand hover:bg-brand-dark text-white font-bold text-sm transition"
-            >
-              В каталог
-            </Link>
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <Link
+                href="/"
+                className="inline-block px-6 py-3 rounded-btn bg-brand hover:bg-brand-dark text-white font-bold text-sm transition"
+              >
+                В каталог
+              </Link>
+              <Link
+                href="/order"
+                className="inline-block px-6 py-3 rounded-btn border border-slate-300 bg-white text-slate-800 hover:border-brand hover:text-brand font-bold text-sm transition"
+              >
+                Найти по номеру и телефону
+              </Link>
+            </div>
           </div>
         ) : (
           <>

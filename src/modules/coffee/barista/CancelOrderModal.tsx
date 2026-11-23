@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { STAFF_CANCEL_REASONS } from '../orders/constants';
 
 interface CancelOrderModalProps {
-  orderNumber: number;
+  orderNumber: string;
   onClose: () => void;
   onConfirm: (reason: string, comment: string) => Promise<void>;
 }

@@ -13,6 +13,7 @@ import '../src/modules';
 import {
   cancelOrderByGuest,
   createCoffeeOrder,
+  findOrderAccessKeyByNumber,
   getOrderByAccessKeyForGuest,
   getStaffOrderById,
   listBaristaQueue,
@@ -22,7 +23,7 @@ import {
 // Фиксированное тестовое время: 12:03 по Миассу (Asia/Yekaterinburg, UTC+5 -> 07:03 UTC)
 const TEST_NOW = new Date('2026-11-12T07:03:00.000Z');
 
-async function orderIdByNumber(number: number): Promise<number> {
+async function orderIdByNumber(number: string): Promise<number> {
   const res = await query<{ id: number }>('SELECT id FROM coffee_orders WHERE number = $1', [number]);
   return res.rows[0].id;
 }
@@ -90,6 +91,59 @@ describe('Stage 4: Coffee Business Rules (Section 5 & Section 6)', () => {
     );
     assert.equal(beforeOpen.isOpenNow, false);
     assert.equal(beforeOpen.closedUntilLabel, 'Закрыто до 08:00');
+  });
+
+  it('Guest can find their order by random number only (lookup fallback)', async () => {
+    const { products } = await getPublicCatalog();
+    const points = await listPublicPoints('coffee', TEST_NOW);
+    const point = points[0];
+    const cappuccino = products.find((p) => p.name === 'Капучино')!;
+    const volGroup = cappuccino.modifierGroups.find((g) => g.name === 'Объём')!;
+    const milkGroup = cappuccino.modifierGroups.find((g) => g.name === 'Молоко')!;
+    const opt400 = volGroup.options.find((o) => o.name === '400 мл')!;
+    const optCow = milkGroup.options.find((o) => o.name === 'Обычное')!;
+
+    const order = await createCoffeeOrder(
+      {
+        idempotencyKey: crypto.randomUUID(),
+        pointId: point.id,
+        isAsap: true,
+        customerName: 'Гость Без Регистрации',
+        customerPhone: '8 (900) 777-88-99',
+        items: [{ productId: cappuccino.id, optionIds: [opt400.id, optCow.id], quantity: 1 }],
+      },
+      null,
+      TEST_NOW
+    );
+
+    // Номер случайный: 6 символов, есть буква и цифра
+    assert.match(order.number, /^[A-Z0-9]{6}$/);
+    assert.match(order.number, /[A-Z]/);
+    assert.match(order.number, /[2-9]/);
+
+    // Поиск только по номеру: регистр и разделители не важны
+    assert.equal(await findOrderAccessKeyByNumber(order.number), order.accessKey);
+    assert.equal(await findOrderAccessKeyByNumber(order.number.toLowerCase()), order.accessKey);
+    assert.equal(
+      await findOrderAccessKeyByNumber(`${order.number.slice(0, 3)}-${order.number.slice(3)}`),
+      order.accessKey
+    );
+
+    // Несуществующий номер -> заказ не найден
+    assert.equal(await findOrderAccessKeyByNumber('ZZZZZ9'), null);
+
+    // Некорректные данные и старые числовые номера не ищутся
+    await assert.rejects(
+      () => findOrderAccessKeyByNumber(''),
+      (err: any) => err.code === 'VALIDATION_ERROR'
+    );
+    await assert.rejects(
+      () => findOrderAccessKeyByNumber('1001'),
+      (err: any) => err.code === 'VALIDATION_ERROR'
+    );
+
+    // Убираем за собой, чтобы не влиять на тесты лимитов по телефону
+    await cancelOrderByGuest(order.accessKey);
   });
 
   it('5.2 & 5.5 validates modifiers, calculates price on server, and supports idempotency_key', async () => {

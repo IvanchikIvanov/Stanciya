@@ -3,7 +3,7 @@
 Единая веб-платформа предзаказа кофе и напитков с самовывозом для сети точек «СТАНЦИЯ» (г. Миасс, часовой пояс `Asia/Yekaterinburg`, UTC+5).
 
 Включает три интерфейса на одном сервере и одной базе данных:
-1. **Витрина гостя** (`/`, `/cart`, `/checkout`, `/order/[accessKey]`, `/login`, `/register`, `/profile`, `/info/*`)
+1. **Витрина гостя** (`/`, `/cart`, `/checkout`, `/order/[accessKey]`, `/order` — поиск заказа по случайному номеру, `/login`, `/register`, `/profile`, `/info/*`)
 2. **Панель бариста** (`/staff/login`, `/barista`)
 3. **Админ-панель** (`/admin/catalog`, `/admin/modifiers`, `/admin/points`, `/admin/staff`, `/admin/orders`, `/admin/stats`)
 

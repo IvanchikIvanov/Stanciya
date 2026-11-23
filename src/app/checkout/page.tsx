@@ -12,6 +12,7 @@ import {
   setSelectedPointIdInStorage,
   useCart,
 } from '@/modules/coffee/catalog/cart-store';
+import { rememberRecentOrder } from '@/modules/coffee/orders/recent-orders-store';
 
 function generateUuid(): string {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
@@ -33,7 +34,6 @@ export default function CheckoutPage() {
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('+7 ');
   const [comment, setComment] = useState('');
-  const [consent, setConsent] = useState(false);
   // Предложение создать профиль появляется, когда гость ввёл имя (имя на стакан)
   const [isClient, setIsClient] = useState(false);
   const [nameEntered, setNameEntered] = useState(false);
@@ -132,7 +132,7 @@ export default function CheckoutPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!consent || submitting) return;
+    if (submitting) return;
 
     setGeneralError(null);
     setFieldErrors({});
@@ -175,7 +175,6 @@ export default function CheckoutPage() {
           customerName: customerName.trim(),
           customerPhone,
           comment: comment.trim(),
-          consent,
           items: cart.items.map((i) => ({
             productId: i.productId,
             optionIds: i.optionIds,
@@ -212,6 +211,9 @@ export default function CheckoutPage() {
 
       cart.clear();
 
+      // Запоминаем заказ на этом устройстве, чтобы к нему можно было вернуться из каталога
+      rememberRecentOrder({ accessKey: data.order.accessKey, number: data.order.number });
+
       // Профиль создаём после заказа: если не получилось (номер уже занят и т. п.),
       // заказ всё равно оформлен, а страница заказа снова предложит сохранить данные
       let registered = '';
@@ -225,7 +227,8 @@ export default function CheckoutPage() {
               phone: customerPhone,
               password: accountPassword,
               passwordConfirm: accountPassword,
-              consent,
+              // Согласие даётся самим фактом оформления заказа (см. фразу со ссылками ниже)
+              consent: true,
               attachOrderAccessKey: data.order.accessKey,
             }),
           });
@@ -306,7 +309,7 @@ export default function CheckoutPage() {
               <span>{generalError}</span>
               <button
                 type="submit"
-                disabled={!consent || submitting}
+                disabled={submitting}
                 className="px-3.5 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-xs font-extrabold"
               >
                 Повторить
@@ -614,7 +617,7 @@ export default function CheckoutPage() {
             )}
           </section>
 
-          {/* 4. Подтверждение и согласие */}
+          {/* 4. Подтверждение заказа */}
           <section className="bg-white rounded-panel p-5 shadow-card space-y-4 border border-blue-100">
             <div className="flex items-center justify-between text-base font-bold text-slate-700">
               <span>Оплата при получении на точке</span>
@@ -623,44 +626,29 @@ export default function CheckoutPage() {
               </span>
             </div>
 
-            <label className="flex items-start gap-3 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={consent}
-                onChange={(e) => setConsent(e.target.checked)}
-                className="mt-1 w-5 h-5 rounded border-slate-300 text-brand focus:ring-brand"
-              />
-              <span className="text-xs sm:text-sm text-slate-700">
-                Я соглашаюсь на{' '}
-                <Link
-                  href="/info/consent"
-                  target="_blank"
-                  className="text-brand font-bold underline"
-                >
-                  обработку персональных данных
-                </Link>{' '}
-                и ознакомлен с{' '}
-                <Link
-                  href="/info/privacy"
-                  target="_blank"
-                  className="text-brand font-bold underline"
-                >
-                  политикой конфиденциальности
-                </Link>
-                .
-              </span>
-            </label>
-
-            {fieldErrors.consent && (
-              <p className="text-xs text-red-600 font-semibold">
-                {fieldErrors.consent}
-              </p>
-            )}
+            <p className="text-xs sm:text-sm text-slate-600">
+              Оформляя заказ, вы соглашаетесь с{' '}
+              <Link
+                href="/info/pickup"
+                target="_blank"
+                className="text-brand font-bold underline"
+              >
+                правилами самовывоза и оплаты
+              </Link>{' '}
+              и{' '}
+              <Link
+                href="/info/privacy"
+                target="_blank"
+                className="text-brand font-bold underline"
+              >
+                политикой конфиденциальности
+              </Link>
+              .
+            </p>
 
             <button
               type="submit"
               disabled={
-                !consent ||
                 submitting ||
                 !selectedPointId ||
                 !currentPoint?.hasSlotsToday

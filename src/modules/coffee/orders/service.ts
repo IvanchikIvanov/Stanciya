@@ -51,7 +51,7 @@ export interface OrderItemDto {
 }
 
 export interface GuestOrderDto {
-  number: number;
+  number: string;
   accessKey: string;
   pointId: number;
   pointName: string;
@@ -90,7 +90,7 @@ export interface OrderHistoryEntryDto {
 
 export interface StaffOrderDto {
   id: number;
-  number: number;
+  number: string;
   accessKey: string;
   pointId: number;
   pointName: string;
@@ -128,7 +128,8 @@ export interface CreateOrderInput {
   customerName: string;
   customerPhone: string;
   comment?: string;
-  consent: boolean;
+  // Необязательное поле для совместимости: согласие даётся фактом оформления заказа
+  consent?: boolean;
   items: CreateOrderItemInput[];
 }
 
@@ -177,6 +178,24 @@ export async function getNoShowCountByPhone(phone: string): Promise<number> {
   return Number(res.rows[0]?.cnt ?? 0);
 }
 
+// Алфавит без похожих символов (0/O, 1/I/L) — номер диктуют и вводят с телефона
+const ORDER_NUMBER_ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
+
+/**
+ * Случайный номер заказа: 6 символов, обязательно есть буква и цифра.
+ * ~887 млн комбинаций — перебором не подобрать, поэтому номер сам по себе
+ * является «паролем» от заказа и поиск работает без телефона.
+ */
+function generateOrderNumber(): string {
+  for (;;) {
+    let code = '';
+    for (let i = 0; i < 6; i++) {
+      code += ORDER_NUMBER_ALPHABET[crypto.randomInt(ORDER_NUMBER_ALPHABET.length)];
+    }
+    if (/[A-Z]/.test(code) && /[2-9]/.test(code)) return code;
+  }
+}
+
 export async function createCoffeeOrder(
   input: CreateOrderInput,
   actor: SessionUser | null = null,
@@ -201,10 +220,6 @@ export async function createCoffeeOrder(
   const comment = (input.comment ?? '').trim();
   if (comment.length > 200) {
     fields.comment = 'Комментарий не должен превышать 200 символов';
-  }
-
-  if (!input.consent) {
-    fields.consent = 'Необходимо согласие на обработку персональных данных';
   }
 
   if (!input.items || input.items.length === 0) {
@@ -502,30 +517,48 @@ export async function createCoffeeOrder(
     const generatedAccessKey = crypto.randomBytes(24).toString('hex'); // 48 символов (>= 32)
     const userId = actor?.role === 'client' ? actor.id : null;
 
-    const orderIns = await tx.query<{ id: number }>(
-      `INSERT INTO coffee_orders (
-         access_key, idempotency_key, point_id, user_id,
-         customer_name, customer_phone, comment,
-         pickup_at, is_asap, pickup_time_adjusted, total, requires_call, status
-       )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, FALSE, $10, $11, 'new')
-       RETURNING id`,
-      [
-        generatedAccessKey,
-        idempotencyKey,
-        point.id,
-        userId,
-        customerName,
-        customerPhone,
-        comment,
-        selectedPickupIso,
-        input.isAsap,
-        orderTotal,
-        callConfirmThreshold > 0 && orderTotal > callConfirmThreshold,
-      ]
-    );
-
-    const orderId = orderIns.rows[0].id;
+    // Номер генерируется случайно; при крайне маловероятном совпадении пробуем другой
+    let orderId: number;
+    for (let attempt = 0; ; attempt++) {
+      const orderNumber = generateOrderNumber();
+      await tx.query('SAVEPOINT order_number_retry');
+      try {
+        const orderIns = await tx.query<{ id: number }>(
+          `INSERT INTO coffee_orders (
+             number, access_key, idempotency_key, point_id, user_id,
+             customer_name, customer_phone, comment,
+             pickup_at, is_asap, pickup_time_adjusted, total, requires_call, status
+           )
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, FALSE, $11, $12, 'new')
+           RETURNING id`,
+          [
+            orderNumber,
+            generatedAccessKey,
+            idempotencyKey,
+            point.id,
+            userId,
+            customerName,
+            customerPhone,
+            comment,
+            selectedPickupIso,
+            input.isAsap,
+            orderTotal,
+            callConfirmThreshold > 0 && orderTotal > callConfirmThreshold,
+          ]
+        );
+        orderId = orderIns.rows[0].id;
+        break;
+      } catch (err: any) {
+        const isNumberCollision =
+          err?.constraint === 'coffee_orders_number_unique' ||
+          /coffee_orders_number_unique/.test(err?.message ?? '');
+        if (isNumberCollision && attempt < 5) {
+          await tx.query('ROLLBACK TO SAVEPOINT order_number_retry');
+          continue;
+        }
+        throw err;
+      }
+    }
 
     for (const pItem of preparedItems) {
       await tx.query(
@@ -601,6 +634,27 @@ async function fetchOrderItems(orderIds: number[]): Promise<Map<number, OrderIte
   return map;
 }
 
+/**
+ * Поиск заказа гостем по случайному номеру (буквы+цифры). Номер непредсказуем,
+ * поэтому сам по себе является «паролем» от заказа — телефон не нужен.
+ * Старые числовые номера (до миграции 004) намеренно не ищутся: они предсказуемы.
+ * Возвращает accessKey или null, если номер не найден.
+ */
+export async function findOrderAccessKeyByNumber(numberRaw: string): Promise<string | null> {
+  const code = (numberRaw ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (!/^[A-Z0-9]{4,16}$/.test(code) || !/[A-Z]/.test(code)) {
+    throw new AppError(400, 'VALIDATION_ERROR', 'Введите номер заказа', {
+      number: 'Номер заказа — буквы и цифры, например K7M294',
+    });
+  }
+
+  const res = await query<{ access_key: string }>(
+    'SELECT access_key FROM coffee_orders WHERE number = $1',
+    [code]
+  );
+  return res.rows[0]?.access_key ?? null;
+}
+
 export async function getOrderByAccessKeyForGuest(
   accessKey: string
 ): Promise<GuestOrderDto | null> {
@@ -608,7 +662,7 @@ export async function getOrderByAccessKeyForGuest(
 
   const res = await query<{
     id: number;
-    number: number;
+    number: string;
     access_key: string;
     point_id: number;
     point_name: string;
@@ -886,7 +940,7 @@ export async function transitionOrderStatusByStaff(
 async function hydrateStaffOrders(
   rows: Array<{
     id: number;
-    number: number;
+    number: string;
     access_key: string;
     point_id: number;
     point_name: string;
@@ -1015,7 +1069,7 @@ export async function getStaffOrderById(
 
   const res = await query<{
     id: number;
-    number: number;
+    number: string;
     access_key: string;
     point_id: number;
     point_name: string;
@@ -1088,7 +1142,7 @@ export async function listBaristaQueue(
 
   const activeRes = await query<{
     id: number;
-    number: number;
+    number: string;
     access_key: string;
     point_id: number;
     point_name: string;
@@ -1119,7 +1173,7 @@ export async function listBaristaQueue(
 
   const completedRes = await query<{
     id: number;
-    number: number;
+    number: string;
     access_key: string;
     point_id: number;
     point_name: string;
@@ -1175,7 +1229,7 @@ export async function listBaristaQueue(
 export async function listClientOrders(userId: number): Promise<GuestOrderDto[]> {
   const res = await query<{
     id: number;
-    number: number;
+    number: string;
     access_key: string;
     point_id: number;
     point_name: string;
@@ -1332,7 +1386,7 @@ export async function listAdminOrders(
   const listParams = [...params, pageSize, offset];
   const rowsRes = await query<{
     id: number;
-    number: number;
+    number: string;
     access_key: string;
     point_id: number;
     point_name: string;
