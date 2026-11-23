@@ -13,6 +13,7 @@ import type {
   CatalogProductDto,
 } from '@/modules/coffee/catalog/service';
 import { ProductModal } from '@/modules/coffee/catalog/ProductModal';
+import { RecentOrderBanner } from '@/modules/coffee/orders/RecentOrderBanner';
 import {
   getPickupChoiceFromStorage,
   getSelectedPointIdFromStorage,
@@ -224,6 +225,11 @@ export default function HomePage() {
           </div>
         </div>
       </header>
+
+      {/* Возврат к активному заказу гостя, сохранённому на этом устройстве */}
+      <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 pt-4">
+        <RecentOrderBanner />
+      </div>
 
       {/* ───────── Первый экран ───────── */}
       <section className="relative overflow-hidden">
@@ -475,6 +481,7 @@ export default function HomePage() {
             <span>г. Миасс</span>
           </div>
           <nav aria-label="Информация" className="flex flex-wrap gap-x-5 gap-y-2">
+            <Link href="/order" className="hover:text-brand">Найти заказ</Link>
             <Link href="/info/points" className="hover:text-brand">Адреса и часы работы</Link>
             <Link href="/info/pickup" className="hover:text-brand">Условия самовывоза</Link>
             <Link href="/info/contacts" className="hover:text-brand">Контакты</Link>

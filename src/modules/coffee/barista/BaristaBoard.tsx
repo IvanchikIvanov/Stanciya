@@ -57,7 +57,7 @@ export function BaristaBoard({
   }, []);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const knownActiveMapRef = useRef<Map<number, { number: number; status: OrderStatus }> | null>(
+  const knownActiveMapRef = useRef<Map<number, { number: string; status: OrderStatus }> | null>(
     null
   );
   const wasOfflineRef = useRef(false);
@@ -126,7 +126,7 @@ export function BaristaBoard({
           }
         }
 
-        const updatedMap = new Map<number, { number: number; status: OrderStatus }>();
+        const updatedMap = new Map<number, { number: string; status: OrderStatus }>();
         for (const ord of nextActive) {
           updatedMap.set(ord.id, { number: ord.number, status: ord.status });
         }

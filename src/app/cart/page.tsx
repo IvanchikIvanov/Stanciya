@@ -12,6 +12,7 @@ import {
   readCartFromStorage,
   useCart,
 } from '@/modules/coffee/catalog/cart-store';
+import { RecentOrderBanner } from '@/modules/coffee/orders/RecentOrderBanner';
 
 export default function CartPage() {
   const router = useRouter();
@@ -102,6 +103,8 @@ export default function CartPage() {
 
       <main className="max-w-3xl w-full mx-auto px-4 py-6 space-y-4 flex-1">
         <h1 className="text-2xl font-extrabold text-slate-900">Ваш заказ</h1>
+
+        <RecentOrderBanner />
 
         {priceUpdatedNotice && (
           <div

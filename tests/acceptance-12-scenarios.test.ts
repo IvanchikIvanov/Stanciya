@@ -80,7 +80,7 @@ describe('Stage 10: All 12 Acceptance Scenarios (Section 15)', () => {
       TEST_NOW
     );
 
-    assert.ok(guestOrder.number >= 1001);
+    assert.match(guestOrder.number, /^[A-Z0-9]{6}$/);
     assert.equal(guestOrder.status, 'new');
     assert.equal(guestOrder.total, 220 + 40 + 50);
 
